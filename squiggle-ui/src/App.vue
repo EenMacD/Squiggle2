@@ -54,6 +54,38 @@
               </div>
             </div>
           </div>
+
+          <div class="control-group">
+            <button class="nav-btn record" @click="toggleRecording" :class="{ 'recording': isRecording }">
+              <span class="icon">🎥</span>
+              {{ isRecording ? 'Stop Recording' : 'Record Play' }}
+            </button>
+          </div>
+
+          <div class="control-group">
+            <button class="nav-btn plays" @click="showPlays = !showPlays">
+              <span class="icon">📋</span>
+              Saved Plays
+            </button>
+            <div v-if="showPlays" class="plays-list">
+              <div v-if="plays.length === 0" class="no-plays">
+                No saved plays
+              </div>
+              <div v-else class="play-items">
+                <div v-for="play in plays" :key="play.id" class="play-item">
+                  <span class="play-name">{{ play.name }}</span>
+                  <div class="play-actions">
+                    <button @click="viewPlayback(play)" class="play-action-btn">
+                      <span class="icon">▶️</span>
+                    </button>
+                    <button @click="deletePlay(play.id)" class="play-action-btn">
+                      <span class="icon">🗑️</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div class="navbar-end" :class="{ 'active': isMenuOpen }">
@@ -65,20 +97,70 @@
     </nav>
 
     <main class="main-content">
-      <RugbyPitch />
+      <div v-if="currentPlayback" class="playback-screen">
+        <div class="playback-header">
+          <button @click="closePlayback" class="back-btn">
+            <span class="icon">←</span>
+            Back
+          </button>
+          <h2 class="playback-title">{{ currentPlayback.name }}</h2>
+          <div class="playback-controls">
+            <button @click="startPlayback" class="play-btn" :disabled="isPlaying">
+              <span class="icon">▶️</span>
+              Play
+            </button>
+            <button @click="stopPlayback" class="play-btn" :disabled="!isPlaying">
+              <span class="icon">⏹️</span>
+              Stop
+            </button>
+          </div>
+        </div>
+        <PlaybackViewer 
+          :playback-data="currentPlayback.playerStates" 
+          :is-playing="isPlaying"
+          @play="startPlayback"
+          @stop="stopPlayback"
+        />
+      </div>
+      <div v-else class="pitch-container">
+        <RugbyPitch 
+          :is-recording="isRecording"
+          :playback-data="[]"
+          @update:player-states="updatePlayerStates"
+        />
+      </div>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import RugbyPitch from './components/RugbyPitch.vue'
+import PlaybackViewer from './components/PlaybackViewer.vue'
+import { playService } from './services/playService'
+import type { Play, PlayerState } from './types/play'
 
 const isMenuOpen = ref(false)
 const showAttackingCount = ref(false)
 const showDefensiveCount = ref(false)
 const selectedAttackingCount = ref(0)
 const selectedDefensiveCount = ref(0)
+const isRecording = ref(false)
+const showPlays = ref(false)
+const plays = ref<Play[]>([])
+const currentPlayback = ref<Play | null>(null)
+const currentPlayerStates = ref<PlayerState[]>([])
+const players = ref<PlayerState[]>([])
+const isPlaying = ref(false)
+
+// Load saved plays on component mount
+onMounted(async () => {
+  try {
+    plays.value = await playService.listPlays()
+  } catch (error) {
+    console.error('Failed to load plays:', error)
+  }
+})
 
 const toggleMenu = () => {
   isMenuOpen.value = !isMenuOpen.value
@@ -102,7 +184,75 @@ const selectPlayerCount = (type: 'attacking' | 'defensive', count: number) => {
     selectedDefensiveCount.value = count
     showDefensiveCount.value = false
   }
-  // Here you would trigger the actual player addition
+}
+
+const toggleRecording = async () => {
+  isRecording.value = !isRecording.value
+  if (!isRecording.value) {
+    // Stop recording and save the play
+    try {
+      const playName = prompt('Enter a name for this play:')
+      if (playName && currentPlayerStates.value.length > 0) {
+        // Remove duplicate timestamps to ensure smooth playback
+        const uniqueStates = currentPlayerStates.value.reduce((acc, state) => {
+          const key = `${state.playerId}-${state.timestamp}`
+          if (!acc.has(key)) {
+            acc.set(key, state)
+          }
+          return acc
+        }, new Map<string, PlayerState>())
+        
+        const savedPlay = await playService.createPlay({
+          name: playName,
+          playerStates: Array.from(uniqueStates.values()),
+        })
+        // Refresh plays list
+        plays.value = await playService.listPlays()
+        // Set the current playback to the newly saved play
+        currentPlayback.value = savedPlay
+      }
+    } catch (error) {
+      console.error('Failed to save play:', error)
+    }
+  } else {
+    // Start recording - clear previous states
+    currentPlayerStates.value = []
+  }
+}
+
+const updatePlayerStates = (states: PlayerState[]) => {
+  if (isRecording.value) {
+    // Append new states to the existing ones
+    currentPlayerStates.value = [...currentPlayerStates.value, ...states]
+  }
+}
+
+const viewPlayback = (play: Play) => {
+  currentPlayback.value = play
+  showPlays.value = false
+}
+
+const closePlayback = () => {
+  currentPlayback.value = null
+}
+
+const deletePlay = async (id: string) => {
+  if (confirm('Are you sure you want to delete this play?')) {
+    try {
+      await playService.deletePlay(id)
+      plays.value = plays.value.filter(play => play.id !== id)
+    } catch (error) {
+      console.error('Failed to delete play:', error)
+    }
+  }
+}
+
+const startPlayback = () => {
+  isPlaying.value = true
+}
+
+const stopPlayback = () => {
+  isPlaying.value = false
 }
 </script>
 
@@ -261,10 +411,65 @@ const selectPlayerCount = (type: 'attacking' | 'defensive', count: number) => {
   padding: 2rem;
   max-width: 1400px;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.pitch-container {
+  width: 100%;
+}
+
+.playback-screen {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.playback-header {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.back-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border: none;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateX(-4px);
+}
+
+.back-btn .icon {
+  font-size: 1.2rem;
+}
+
+.playback-title {
+  color: white;
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 @media (max-width: 768px) {
   .navbar {
+    padding: 1rem;
+  }
+  .main-content {
     padding: 1rem;
   }
 }
@@ -340,5 +545,112 @@ const selectPlayerCount = (type: 'attacking' | 'defensive', count: number) => {
   background: rgba(255, 255, 255, 0.2);
   color: white;
   border-color: rgba(255, 255, 255, 0.3);
+}
+
+.record {
+  background: rgba(255, 0, 0, 0.1);
+}
+
+.record.recording {
+  background: rgba(255, 0, 0, 0.3);
+  animation: pulse 2s infinite;
+}
+
+.plays-list {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.no-plays {
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+  padding: 1rem;
+}
+
+.play-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.play-item:last-child {
+  border-bottom: none;
+}
+
+.play-name {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
+}
+
+.play-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.play-action-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.play-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(255, 0, 0, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
+  }
+}
+
+.playback-controls {
+  display: flex;
+  gap: 1rem;
+  margin-left: auto;
+}
+
+.play-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border: none;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.play-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+.play-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.play-btn .icon {
+  font-size: 1.2rem;
 }
 </style> 

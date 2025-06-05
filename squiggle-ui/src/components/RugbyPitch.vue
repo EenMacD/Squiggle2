@@ -52,7 +52,10 @@
         ref="pitchCanvas"
         :width="canvasWidth"
         :height="canvasHeight"
-        @click="handleCanvasClick"
+        @mousedown="handleCanvasClick"
+        @mousemove="handleCanvasMouseMove"
+        @mouseup="handleCanvasMouseUp"
+        @mouseleave="handleCanvasMouseUp"
       ></canvas>
     </div>
   </div>
@@ -60,6 +63,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, onUnmounted } from 'vue'
+import type { PlayerState } from '../types/play'
 
 interface Player {
   x: number
@@ -68,18 +72,51 @@ interface Player {
   id: number
 }
 
+interface Ball {
+  x: number
+  y: number
+  attachedTo: { type: 'attacking' | 'defensive', id: number } | null
+}
+
+interface Props {
+  isRecording?: boolean
+  playbackData?: PlayerState[]
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  isRecording: false,
+  playbackData: () => []
+})
+
+const emit = defineEmits<{
+  (e: 'update:playerStates', states: PlayerState[]): void
+}>()
+
 const pitchCanvas = ref<HTMLCanvasElement | null>(null)
 const canvasWidth = ref(800)
 const canvasHeight = ref(600)
 const isMinimized = ref(false)
 const isFullscreen = ref(false)
 const players = ref<Player[]>([])
+const ball = ref<Ball>({
+  x: 0,
+  y: 0,
+  attachedTo: null
+})
+const selectedPlayer = ref<Player | null>(null)
+const selectedBall = ref<boolean>(false)
+const isDragging = ref(false)
+const dragOffset = ref({ x: 0, y: 0 })
 let nextPlayerId = 1
 
 const showAttackingCount = ref(false)
 const showDefensiveCount = ref(false)
 const selectedAttackingCount = ref(1)
 const selectedDefensiveCount = ref(1)
+
+const recordingInterval = ref<number | null>(null)
+const playbackInterval = ref<number | null>(null)
+const currentPlaybackIndex = ref(0)
 
 const calculateFullscreenDimensions = () => {
   const windowWidth = window.innerWidth
@@ -120,6 +157,13 @@ const updateCanvasSize = () => {
     canvasWidth.value = baseWidth * 1.4 // 40% extra width
     canvasHeight.value = baseWidth / fieldRatio
   }
+  
+  // Update ball position to center of pitch
+  const fieldWidth = canvasWidth.value / 1.4 // Remove the extra width for substitutes
+  const fieldHeight = canvasHeight.value
+  ball.value.x = fieldWidth * 0.5 // Center horizontally
+  ball.value.y = fieldHeight * 0.5 // Center vertically
+  
   requestAnimationFrame(drawPitch)
 }
 
@@ -288,13 +332,160 @@ const handleCanvasClick = (event: MouseEvent) => {
   const x = (event.clientX - rect.left) * scaleX
   const y = (event.clientY - rect.top) * scaleY
   
-  // Move the last added player to the clicked position
-  if (players.value.length > 0) {
-    const lastPlayer = players.value[players.value.length - 1]
-    lastPlayer.x = x
-    lastPlayer.y = y
+  // Check if we clicked on the ball
+  const ballRadius = Math.min(canvasWidth.value, canvasHeight.value) * 0.015 // Slightly smaller than player radius
+  const dx = ball.value.x - x
+  const dy = ball.value.y - y
+  const ballDistance = Math.sqrt(dx * dx + dy * dy)
+  
+  if (ballDistance <= ballRadius) {
+    if (!isDragging.value) {
+      selectedBall.value = true
+      selectedPlayer.value = null
+      isDragging.value = true
+      dragOffset.value = {
+        x: x - ball.value.x,
+        y: y - ball.value.y
+      }
+    }
     drawPitch()
+    return
   }
+  
+  // Check if we clicked on a player
+  const clickedPlayer = players.value.find(player => {
+    const dx = player.x - x
+    const dy = player.y - y
+    const distance = Math.sqrt(dx * dx + dy * dy)
+    return distance <= 20 // Player radius for click detection
+  })
+
+  if (clickedPlayer) {
+    // Only select if we're not already dragging
+    if (!isDragging.value) {
+      selectedPlayer.value = clickedPlayer
+      selectedBall.value = false
+      isDragging.value = true
+      dragOffset.value = {
+        x: x - clickedPlayer.x,
+        y: y - clickedPlayer.y
+      }
+    }
+  } else {
+    // Only deselect if we're not dragging
+    if (!isDragging.value) {
+      selectedPlayer.value = null
+      selectedBall.value = false
+    }
+  }
+  
+  drawPitch()
+}
+
+const handleCanvasMouseMove = (event: MouseEvent) => {
+  if (!pitchCanvas.value || !isDragging.value) return
+  
+  const rect = pitchCanvas.value.getBoundingClientRect()
+  const scaleX = canvasWidth.value / rect.width
+  const scaleY = canvasHeight.value / rect.height
+  
+  const x = (event.clientX - rect.left) * scaleX
+  const y = (event.clientY - rect.top) * scaleY
+  
+  // Calculate player radius based on canvas dimensions
+  const playerRadius = Math.min(canvasWidth.value, canvasHeight.value) * 0.02
+  
+  if (selectedBall.value) {
+    ball.value.x = x - dragOffset.value.x
+    ball.value.y = y - dragOffset.value.y
+    
+    // Check if ball is near any player
+    const ballRadius = Math.min(canvasWidth.value, canvasHeight.value) * 0.015
+    const attachmentThreshold = playerRadius * 1.2 // Ball attaches when within 120% of player radius
+    
+    let closestPlayer: Player | null = null
+    let minDistance = Infinity
+    
+    players.value.forEach(player => {
+      const dx = player.x - ball.value.x
+      const dy = player.y - ball.value.y
+      const distance = Math.sqrt(dx * dx + dy * dy)
+      
+      if (distance < minDistance && distance < attachmentThreshold) {
+        minDistance = distance
+        closestPlayer = player
+      }
+    })
+    
+    if (closestPlayer) {
+      ball.value.attachedTo = {
+        type: closestPlayer.type,
+        id: closestPlayer.id
+      }
+      // Position the ball slightly offset from the player's center
+      const offsetX = playerRadius * 0.8 // Offset by 80% of player radius
+      const offsetY = playerRadius * 0.4 // Offset by 40% of player radius
+      ball.value.x = (closestPlayer as Player).x + offsetX
+      ball.value.y = (closestPlayer as Player).y + offsetY
+    } else {
+      ball.value.attachedTo = null
+    }
+  } else if (selectedPlayer.value) {
+    selectedPlayer.value.x = x - dragOffset.value.x
+    selectedPlayer.value.y = y - dragOffset.value.y
+    
+    // If ball is attached to this player, move it with the player
+    if (ball.value.attachedTo && 
+        ball.value.attachedTo.type === selectedPlayer.value.type && 
+        ball.value.attachedTo.id === selectedPlayer.value.id) {
+      const offsetX = playerRadius * 0.8 // Offset by 80% of player radius
+      const offsetY = playerRadius * 0.4 // Offset by 40% of player radius
+      ball.value.x = selectedPlayer.value.x + offsetX
+      ball.value.y = selectedPlayer.value.y + offsetY
+    }
+  }
+  
+  // Record the new position if recording
+  if (props.isRecording) {
+    const timestamp = Date.now()
+    const states: PlayerState[] = [
+      // First state contains ball information
+      {
+        playerId: 'ball',
+        position: {
+          x: ball.value.x,
+          y: ball.value.y
+        },
+        timestamp: timestamp,
+        ballState: {
+          position: {
+            x: ball.value.x,
+            y: ball.value.y
+          },
+          attachedTo: ball.value.attachedTo ? {
+            type: ball.value.attachedTo.type,
+            id: ball.value.attachedTo.id
+          } : null
+        }
+      },
+      // Followed by player states without ball state
+      ...players.value.map(player => ({
+        playerId: `${player.type}-${player.id}`,
+        position: {
+          x: player.x,
+          y: player.y
+        },
+        timestamp: timestamp
+      }))
+    ]
+    emit('update:playerStates', states)
+  }
+  
+  drawPitch()
+}
+
+const handleCanvasMouseUp = () => {
+  isDragging.value = false
 }
 
 const drawPitch = () => {
@@ -440,9 +631,9 @@ const drawPitch = () => {
   // Draw premium players
   const playerRadius = Math.min(actualFieldWidth, actualFieldHeight) * 0.02
   players.value.forEach(player => {
-    // Adjust player position to account for field offset
-    const adjustedX = player.x + fieldX
-    const adjustedY = player.y + fieldY
+    // Draw player at its exact position
+    const adjustedX = player.x
+    const adjustedY = player.y
     
     // Draw premium player shadow
     ctx.shadowColor = 'rgba(0, 0, 0, 0.25)'
@@ -476,9 +667,14 @@ const drawPitch = () => {
     ctx.fillStyle = playerGradient
     ctx.fill()
 
-    // Draw premium player border
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.98)'
-    ctx.lineWidth = 1.5
+    // Draw premium player border with selection state
+    if (player === selectedPlayer.value) {
+      ctx.strokeStyle = '#000000'
+      ctx.lineWidth = 3
+    } else {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.98)'
+      ctx.lineWidth = 1.5
+    }
     ctx.stroke()
 
     // Draw premium player number with improved rendering
@@ -502,20 +698,195 @@ const drawPitch = () => {
     ctx.shadowBlur = 0
     ctx.shadowOffsetY = 0
   })
+
+  // Draw the ball
+  const ballRadius = playerRadius * 0.75 // Slightly smaller than player radius
+  
+  // Draw ball shadow
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.25)'
+  ctx.shadowBlur = 12
+  ctx.shadowOffsetY = 4
+  ctx.beginPath()
+  ctx.arc(ball.value.x, ball.value.y + 2, ballRadius, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'
+  ctx.fill()
+
+  // Draw ball with gradient
+  const ballGradient = ctx.createRadialGradient(
+    ball.value.x - ballRadius/2, ball.value.y - ballRadius/2, 0,
+    ball.value.x, ball.value.y, ballRadius
+  )
+  ballGradient.addColorStop(0, '#FFEB3B')
+  ballGradient.addColorStop(0.3, '#FFD600')
+  ballGradient.addColorStop(0.7, '#FFC107')
+  ballGradient.addColorStop(1, '#FFB300')
+  
+  ctx.shadowColor = 'transparent'
+  ctx.beginPath()
+  ctx.arc(ball.value.x, ball.value.y, ballRadius, 0, Math.PI * 2)
+  ctx.fillStyle = ballGradient
+  ctx.fill()
+
+  // Draw ball border with selection state
+  if (selectedBall.value) {
+    ctx.strokeStyle = '#000000'
+    ctx.lineWidth = 3
+  } else {
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.98)'
+    ctx.lineWidth = 1.5
+  }
+  ctx.stroke()
 }
 
 onMounted(() => {
   window.addEventListener('resize', handleResize)
+  if (pitchCanvas.value) {
+    pitchCanvas.value.addEventListener('mousemove', handleCanvasMouseMove)
+    pitchCanvas.value.addEventListener('mouseup', handleCanvasMouseUp)
+    pitchCanvas.value.addEventListener('mouseleave', handleCanvasMouseUp)
+  }
+  
+  // Initialize ball position in center of pitch
+  const fieldWidth = canvasWidth.value / 1.4
+  const fieldHeight = canvasHeight.value
+  ball.value = {
+    x: fieldWidth * 0.5,
+    y: fieldHeight * 0.5,
+    attachedTo: null
+  }
+  
   drawPitch()
+
+  // Watch for recording state changes
+  watch(() => props.isRecording, (newValue) => {
+    if (newValue) {
+      startRecording()
+    }
+  }, { immediate: true })
+
+  // Watch for playback data changes
+  watch(() => props.playbackData, (newValue) => {
+    if (newValue.length > 0) {
+      startPlayback()
+    } else {
+      stopPlayback()
+    }
+  }, { immediate: true })
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
+  if (pitchCanvas.value) {
+    pitchCanvas.value.removeEventListener('mousemove', handleCanvasMouseMove)
+    pitchCanvas.value.removeEventListener('mouseup', handleCanvasMouseUp)
+    pitchCanvas.value.removeEventListener('mouseleave', handleCanvasMouseUp)
+  }
+  stopRecording()
+  stopPlayback()
 })
 
 watch(players, () => {
   requestAnimationFrame(drawPitch)
 }, { deep: true })
+
+const startRecording = () => {
+  // Initialize recording with current player positions
+  const timestamp = Date.now()
+  const states: PlayerState[] = [
+    // First state contains ball information
+    {
+      playerId: 'ball',
+      position: {
+        x: ball.value.x,
+        y: ball.value.y
+      },
+      timestamp: timestamp,
+      ballState: {
+        position: {
+          x: ball.value.x,
+          y: ball.value.y
+        },
+        attachedTo: ball.value.attachedTo ? {
+          type: ball.value.attachedTo.type,
+          id: ball.value.attachedTo.id
+        } : null
+      }
+    },
+    // Followed by player states without ball state
+    ...players.value.map(player => ({
+      playerId: `${player.type}-${player.id}`,
+      position: {
+        x: player.x,
+        y: player.y
+      },
+      timestamp: timestamp
+    }))
+  ]
+  emit('update:playerStates', states)
+}
+
+const stopRecording = () => {
+  // No cleanup needed since we're not using intervals
+}
+
+const startPlayback = () => {
+  if (props.playbackData.length === 0) return
+
+  // Reset players array and ball
+  players.value = []
+  
+  // Calculate field dimensions
+  const fieldWidth = canvasWidth.value / 1.4
+  const fieldHeight = canvasHeight.value
+  
+  // Initialize ball in center
+  ball.value = {
+    x: fieldWidth * 0.5,
+    y: fieldHeight * 0.5,
+    attachedTo: null
+  }
+
+  // Initialize players from the first state
+  const playerTypes = new Set(props.playbackData.map(state => state.playerId.split('-')[0]))
+  
+  playerTypes.forEach(type => {
+    const typeStates = props.playbackData.filter(state => state.playerId.startsWith(type))
+    typeStates.forEach((state, index) => {
+      players.value.push({
+        x: state.position.x,
+        y: state.position.y,
+        type: type as 'attacking' | 'defensive',
+        id: index + 1
+      })
+    })
+  })
+
+  currentPlaybackIndex.value = 0
+  playbackInterval.value = window.setInterval(() => {
+    if (currentPlaybackIndex.value >= props.playbackData.length) {
+      stopPlayback()
+      return
+    }
+
+    const currentState = props.playbackData[currentPlaybackIndex.value]
+    const [type, id] = currentState.playerId.split('-')
+    const player = players.value.find(p => p.type === type && p.id === parseInt(id))
+    if (player) {
+      player.x = currentState.position.x
+      player.y = currentState.position.y
+    }
+    requestAnimationFrame(drawPitch)
+    currentPlaybackIndex.value++
+  }, 100) // Play back at the same rate as recording
+}
+
+const stopPlayback = () => {
+  if (playbackInterval.value) {
+    clearInterval(playbackInterval.value)
+    playbackInterval.value = null
+  }
+  currentPlaybackIndex.value = 0
+}
 </script>
 
 <style scoped>
