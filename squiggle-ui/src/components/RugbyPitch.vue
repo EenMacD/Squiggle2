@@ -1,17 +1,25 @@
 <template>
   <div class="rugby-pitch-container" :class="{ 'minimized': isMinimized, 'fullscreen': isFullscreen }">
-    <div class="controls" v-if="!isFullscreen">
-      <div class="control-group">
-        <button @click="showPlayerCount('attacking')" class="control-btn attacking">
-          <span class="icon">+</span>
-          Add Attack
-        </button>
+    <div class="canvas-controls">
+      <button @click="showPlayerCount('attacking')" class="control-btn attacking">
+        <span class="icon">+</span>
+        Add Attack
+      </button>
 
-        <button @click="showPlayerCount('defensive')" class="control-btn defensive">
-          <span class="icon">+</span>
-          Add Defense
-        </button>
-      </div>
+      <button @click="showPlayerCount('defensive')" class="control-btn defensive">
+        <span class="icon">+</span>
+        Add Defense
+      </button>
+      
+      <button @click="toggleRecording" class="control-btn record" :class="{ 'recording': props.isRecording }">
+        <span class="icon">●</span>
+        {{ props.isRecording ? 'Stop Recording' : 'Record Play' }}
+      </button>
+      
+      <button @click="toggleFullscreen" class="control-btn minimize" :class="{ 'fullscreen-btn': isFullscreen }">
+        <span class="icon">{{ isFullscreen ? '⤢' : '⤡' }}</span>
+        {{ isFullscreen ? 'Exit Fullscreen' : 'Fullscreen' }}
+      </button>
     </div>
 
     <!-- Dialog Backdrop -->
@@ -43,10 +51,6 @@
       </div>
     </div>
 
-    <button @click="toggleFullscreen" class="control-btn minimize" :class="{ 'fullscreen-btn': isFullscreen }">
-      <span class="icon">{{ isFullscreen ? '⤢' : '⤡' }}</span>
-      {{ isFullscreen ? 'Exit Fullscreen' : 'Fullscreen' }}
-    </button>
     <div class="canvas-container">
       <canvas
         ref="pitchCanvas"
@@ -90,6 +94,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   (e: 'update:playerStates', states: PlayerState[]): void
+  (e: 'update:is-recording', isRecording: boolean): void
 }>()
 
 const pitchCanvas = ref<HTMLCanvasElement | null>(null)
@@ -114,7 +119,6 @@ const showDefensiveCount = ref(false)
 const selectedAttackingCount = ref(1)
 const selectedDefensiveCount = ref(1)
 
-const recordingInterval = ref<number | null>(null)
 const playbackInterval = ref<number | null>(null)
 const currentPlaybackIndex = ref(0)
 
@@ -419,8 +423,8 @@ const handleCanvasMouseMove = (event: MouseEvent) => {
     
     if (closestPlayer) {
       ball.value.attachedTo = {
-        type: closestPlayer.type,
-        id: closestPlayer.id
+        type: (closestPlayer as Player).type,
+        id: (closestPlayer as Player).id
       }
       // Position the ball slightly offset from the player's center
       const offsetX = playerRadius * 0.8 // Offset by 80% of player radius
@@ -445,39 +449,40 @@ const handleCanvasMouseMove = (event: MouseEvent) => {
     }
   }
   
-  // Record the new position if recording
-  if (props.isRecording) {
-    const timestamp = Date.now()
-    const states: PlayerState[] = [
-      // First state contains ball information
-      {
-        playerId: 'ball',
+  const timestamp = Date.now()
+  const states: PlayerState[] = [
+    // First state contains ball information
+    {
+      playerId: 'ball',
+      position: {
+        x: ball.value.x,
+        y: ball.value.y
+      },
+      timestamp: timestamp,
+      ballState: {
         position: {
           x: ball.value.x,
           y: ball.value.y
         },
-        timestamp: timestamp,
-        ballState: {
-          position: {
-            x: ball.value.x,
-            y: ball.value.y
-          },
-          attachedTo: ball.value.attachedTo ? {
-            type: ball.value.attachedTo.type,
-            id: ball.value.attachedTo.id
-          } : null
-        }
+        attachedTo: ball.value.attachedTo ? {
+          type: ball.value.attachedTo.type,
+          id: ball.value.attachedTo.id
+        } : null
+      }
+    },
+    // Followed by player states without ball state
+    ...players.value.map(player => ({
+      playerId: `${player.type}-${player.id}`,
+      position: {
+        x: player.x,
+        y: player.y
       },
-      // Followed by player states without ball state
-      ...players.value.map(player => ({
-        playerId: `${player.type}-${player.id}`,
-        position: {
-          x: player.x,
-          y: player.y
-        },
-        timestamp: timestamp
-      }))
-    ]
+      timestamp: timestamp
+    }))
+  ]
+  
+  // Only emit player states when recording is active
+  if (props.isRecording) {
     emit('update:playerStates', states)
   }
   
@@ -757,13 +762,6 @@ onMounted(() => {
   
   drawPitch()
 
-  // Watch for recording state changes
-  watch(() => props.isRecording, (newValue) => {
-    if (newValue) {
-      startRecording()
-    }
-  }, { immediate: true })
-
   // Watch for playback data changes
   watch(() => props.playbackData, (newValue) => {
     if (newValue.length > 0) {
@@ -781,53 +779,12 @@ onUnmounted(() => {
     pitchCanvas.value.removeEventListener('mouseup', handleCanvasMouseUp)
     pitchCanvas.value.removeEventListener('mouseleave', handleCanvasMouseUp)
   }
-  stopRecording()
   stopPlayback()
 })
 
 watch(players, () => {
   requestAnimationFrame(drawPitch)
 }, { deep: true })
-
-const startRecording = () => {
-  // Initialize recording with current player positions
-  const timestamp = Date.now()
-  const states: PlayerState[] = [
-    // First state contains ball information
-    {
-      playerId: 'ball',
-      position: {
-        x: ball.value.x,
-        y: ball.value.y
-      },
-      timestamp: timestamp,
-      ballState: {
-        position: {
-          x: ball.value.x,
-          y: ball.value.y
-        },
-        attachedTo: ball.value.attachedTo ? {
-          type: ball.value.attachedTo.type,
-          id: ball.value.attachedTo.id
-        } : null
-      }
-    },
-    // Followed by player states without ball state
-    ...players.value.map(player => ({
-      playerId: `${player.type}-${player.id}`,
-      position: {
-        x: player.x,
-        y: player.y
-      },
-      timestamp: timestamp
-    }))
-  ]
-  emit('update:playerStates', states)
-}
-
-const stopRecording = () => {
-  // No cleanup needed since we're not using intervals
-}
 
 const startPlayback = () => {
   if (props.playbackData.length === 0) return
@@ -887,6 +844,48 @@ const stopPlayback = () => {
   }
   currentPlaybackIndex.value = 0
 }
+
+const toggleRecording = () => {
+  // Emit the toggle event to the parent
+  const willBeRecording = !props.isRecording;
+  emit('update:is-recording', willBeRecording);
+  
+  // If we're starting recording, send the initial player states
+  if (willBeRecording) {
+    const timestamp = Date.now();
+    const states: PlayerState[] = [
+      // First state contains ball information
+      {
+        playerId: 'ball',
+        position: {
+          x: ball.value.x,
+          y: ball.value.y
+        },
+        timestamp: timestamp,
+        ballState: {
+          position: {
+            x: ball.value.x,
+            y: ball.value.y
+          },
+          attachedTo: ball.value.attachedTo ? {
+            type: ball.value.attachedTo.type,
+            id: ball.value.attachedTo.id
+          } : null
+        }
+      },
+      // Followed by player states without ball state
+      ...players.value.map(player => ({
+        playerId: `${player.type}-${player.id}`,
+        position: {
+          x: player.x,
+          y: player.y
+        },
+        timestamp: timestamp
+      }))
+    ];
+    emit('update:playerStates', states);
+  }
+}
 </script>
 
 <style scoped>
@@ -901,6 +900,25 @@ const stopPlayback = () => {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
   padding: 2rem;
   backdrop-filter: blur(20px);
+}
+
+.canvas-controls {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 2rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 10;
+}
+
+.fullscreen .canvas-controls {
+  position: fixed;
+  top: 24px;
+  left: 24px;
+  margin-bottom: 0;
+  z-index: 10000;
 }
 
 .rugby-pitch-container.fullscreen {
@@ -980,6 +998,37 @@ const stopPlayback = () => {
 .control-btn.defensive {
   background: linear-gradient(135deg, #6D9BFF, #4444FF);
   color: white;
+}
+
+.control-btn.record {
+  background: linear-gradient(135deg, #9d9d9d, #717171);
+  color: white;
+}
+
+.control-btn.record.recording {
+  background: linear-gradient(135deg, #ff5252, #ff1744);
+  color: white;
+}
+
+.control-btn.record .icon {
+  color: white;
+  font-size: 1rem;
+}
+
+.control-btn.record.recording .icon {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 .control-btn.minimize {

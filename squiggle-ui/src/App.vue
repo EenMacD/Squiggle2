@@ -5,63 +5,21 @@
         <span class="logo">Squiggle</span>
       </div>
       
-      <button class="hamburger" @click="toggleMenu" :class="{ 'active': isMenuOpen }">
-        <span></span>
-        <span></span>
-        <span></span>
-      </button>
+      <div class="navbar-actions">
+        <button class="nav-btn profile-btn">
+          <span class="icon">👤</span>
+          Profile
+        </button>
+        
+        <button class="hamburger" @click="toggleMenu" :class="{ 'active': isMenuOpen }">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+      </div>
 
       <div class="navbar-menu" :class="{ 'active': isMenuOpen }">
         <div class="player-controls">
-          <div class="control-group">
-            <button class="nav-btn attacking" @click="showPlayerCount('attacking')">
-              <span class="icon">🏉</span>
-              Add Attack
-            </button>
-            <div v-if="showAttackingCount" class="count-selector">
-              <span class="count-label">Select number of players:</span>
-              <div class="count-buttons">
-                <button 
-                  v-for="n in 16" 
-                  :key="n"
-                  class="count-btn"
-                  :class="{ 'active': selectedAttackingCount === n }"
-                  @click="selectPlayerCount('attacking', n)"
-                >
-                  {{ n }}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="control-group">
-            <button class="nav-btn defensive" @click="showPlayerCount('defensive')">
-              <span class="icon">🏉</span>
-              Add Defense
-            </button>
-            <div v-if="showDefensiveCount" class="count-selector">
-              <span class="count-label">Select number of players:</span>
-              <div class="count-buttons">
-                <button 
-                  v-for="n in 16" 
-                  :key="n"
-                  class="count-btn"
-                  :class="{ 'active': selectedDefensiveCount === n }"
-                  @click="selectPlayerCount('defensive', n)"
-                >
-                  {{ n }}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="control-group">
-            <button class="nav-btn record" @click="toggleRecording" :class="{ 'recording': isRecording }">
-              <span class="icon">🎥</span>
-              {{ isRecording ? 'Stop Recording' : 'Record Play' }}
-            </button>
-          </div>
-
           <div class="control-group">
             <button class="nav-btn plays" @click="showPlays = !showPlays">
               <span class="icon">📋</span>
@@ -87,12 +45,6 @@
             </div>
           </div>
         </div>
-      </div>
-      <div class="navbar-end" :class="{ 'active': isMenuOpen }">
-        <button class="nav-btn">
-          <span class="icon">👤</span>
-          Profile
-        </button>
       </div>
     </nav>
 
@@ -125,6 +77,7 @@
       <div v-else class="pitch-container">
         <RugbyPitch 
           :is-recording="isRecording"
+          @update:is-recording="handleRecordingChange"
           :playback-data="[]"
           @update:player-states="updatePlayerStates"
         />
@@ -134,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import RugbyPitch from './components/RugbyPitch.vue'
 import PlaybackViewer from './components/PlaybackViewer.vue'
 import { playService } from './services/playService'
@@ -186,9 +139,9 @@ const selectPlayerCount = (type: 'attacking' | 'defensive', count: number) => {
   }
 }
 
-const toggleRecording = async () => {
-  isRecording.value = !isRecording.value
-  if (!isRecording.value) {
+const handleRecordingChange = async (newValue: boolean) => {
+  // If we're switching from recording to not recording
+  if (isRecording.value && !newValue) {
     // Stop recording and save the play
     try {
       const playName = prompt('Enter a name for this play:')
@@ -214,10 +167,13 @@ const toggleRecording = async () => {
     } catch (error) {
       console.error('Failed to save play:', error)
     }
-  } else {
+  } else if (!isRecording.value && newValue) {
     // Start recording - clear previous states
     currentPlayerStates.value = []
   }
+  
+  // Update the recording state
+  isRecording.value = newValue
 }
 
 const updatePlayerStates = (states: PlayerState[]) => {
@@ -289,6 +245,68 @@ const stopPlayback = () => {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+.navbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.nav-btn.profile-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.nav-btn.profile-btn:hover {
+  color: #ffffff;
+}
+
+.nav-btn.profile-btn .icon {
+  font-size: 1.3rem;
+  margin-right: 0.5rem;
+  opacity: 0.9;
+}
+
+.nav-btn {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.5rem;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.nav-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  transform: translateX(4px);
+}
+
+.nav-btn.active {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.nav-btn .icon {
+  font-size: 1.3rem;
+  margin-right: 1rem;
+  opacity: 0.9;
+}
+
 .hamburger {
   display: flex;
   flex-direction: column;
@@ -353,58 +371,6 @@ const stopPlayback = () => {
 
 .navbar-menu.active {
   right: 0;
-}
-
-.navbar-end {
-  position: fixed;
-  bottom: 0;
-  right: -100%;
-  width: 300px;
-  padding: 1.5rem;
-  background: rgba(0, 0, 0, 0.98);
-  backdrop-filter: blur(20px);
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  z-index: 1000;
-}
-
-.navbar-end.active {
-  right: 0;
-}
-
-.nav-btn {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  padding: 1rem 1.25rem;
-  margin-bottom: 0.5rem;
-  border: none;
-  border-radius: 12px;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.8);
-  font-weight: 500;
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-.nav-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #ffffff;
-  transform: translateX(4px);
-}
-
-.nav-btn.active {
-  background: rgba(255, 255, 255, 0.15);
-  color: #ffffff;
-  font-weight: 600;
-}
-
-.nav-btn .icon {
-  font-size: 1.3rem;
-  margin-right: 1rem;
-  opacity: 0.9;
 }
 
 .main-content {
