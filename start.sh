@@ -30,6 +30,25 @@ wait_for_port() {
     done
 }
 
+# Function to start Docker daemon on macOS
+start_docker_daemon() {
+    if command_exists colima; then
+        echo "Starting Docker via Colima..."
+        if ! colima status >/dev/null 2>&1; then
+            colima start
+        else
+            echo "Colima is already running"
+        fi
+    else
+        echo "No Docker runtime found. Please install Colima:"
+        echo "  brew install colima"
+        exit 1
+    fi
+}
+
+echo "Starting Docker daemon..."
+start_docker_daemon
+
 # Check if Docker is installed and running
 if ! command_exists docker; then
     echo "Error: Docker is not installed. Please install Docker first."
