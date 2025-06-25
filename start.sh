@@ -35,10 +35,27 @@ start_docker_daemon() {
     if command_exists colima; then
         echo "Starting Docker via Colima..."
         if ! colima status >/dev/null 2>&1; then
+            echo "Starting Colima..."
             colima start
         else
             echo "Colima is already running"
         fi
+        
+        # Wait for Docker daemon to be ready
+        echo "Waiting for Docker daemon to be ready..."
+        local timeout=60
+        local start_time=$(date +%s)
+        
+        while ! docker info >/dev/null 2>&1; do
+            if [ $(($(date +%s) - start_time)) -gt $timeout ]; then
+                echo "Timeout waiting for Docker daemon to start"
+                echo "Try running: colima restart"
+                exit 1
+            fi
+            echo "Docker daemon not ready yet, waiting..."
+            sleep 2
+        done
+        echo "Docker daemon is ready!"
     else
         echo "No Docker runtime found. Please install Colima:"
         echo "  brew install colima"

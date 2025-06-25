@@ -51,27 +51,12 @@
     <main class="main-content">
       <div v-if="currentPlayback" class="playback-screen">
         <div class="playback-header">
-          <button @click="closePlayback" class="back-btn">
-            <span class="icon">←</span>
-            Back
-          </button>
+          <button @click="closePlayback" class="close-btn">← Back to Match</button>
           <h2 class="playback-title">{{ currentPlayback.name }}</h2>
-          <div class="playback-controls">
-            <button @click="startPlayback" class="play-btn" :disabled="isPlaying">
-              <span class="icon">▶️</span>
-              Play
-            </button>
-            <button @click="stopPlayback" class="play-btn" :disabled="!isPlaying">
-              <span class="icon">⏹️</span>
-              Stop
-            </button>
-          </div>
         </div>
         <PlaybackViewer 
           :playback-data="currentPlayback.playerStates" 
-          :is-playing="isPlaying"
-          @play="startPlayback"
-          @stop="stopPlayback"
+          @sequence-complete="handleSequenceComplete"
         />
       </div>
       <div v-else class="pitch-container">
@@ -104,7 +89,6 @@ const plays = ref<Play[]>([])
 const currentPlayback = ref<Play | null>(null)
 const currentPlayerStates = ref<PlayerState[]>([])
 const players = ref<PlayerState[]>([])
-const isPlaying = ref(false)
 
 // Load saved plays on component mount
 onMounted(async () => {
@@ -203,12 +187,9 @@ const deletePlay = async (id: string) => {
   }
 }
 
-const startPlayback = () => {
-  isPlaying.value = true
-}
-
-const stopPlayback = () => {
-  isPlaying.value = false
+const handleSequenceComplete = () => {
+  // Sequence has finished playing
+  console.log('Sequence playback complete')
 }
 </script>
 
@@ -400,7 +381,7 @@ const stopPlayback = () => {
   margin-bottom: 2rem;
 }
 
-.back-btn {
+.close-btn {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -414,12 +395,12 @@ const stopPlayback = () => {
   transition: all 0.2s ease;
 }
 
-.back-btn:hover {
+.close-btn:hover {
   background: rgba(255, 255, 255, 0.15);
   transform: translateX(-4px);
 }
 
-.back-btn .icon {
+.close-btn .icon {
   font-size: 1.2rem;
 }
 
@@ -584,39 +565,5 @@ const stopPlayback = () => {
   100% {
     box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
   }
-}
-
-.playback-controls {
-  display: flex;
-  gap: 1rem;
-  margin-left: auto;
-}
-
-.play-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.25rem;
-  border: none;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.play-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.15);
-  transform: translateY(-2px);
-}
-
-.play-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.play-btn .icon {
-  font-size: 1.2rem;
 }
 </style> 

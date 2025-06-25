@@ -6,6 +6,10 @@
           <span class="icon">{{ isFullscreen ? '⤢' : '⤡' }}</span>
           {{ isFullscreen ? 'Exit Fullscreen' : 'Fullscreen' }}
         </button>
+        <button @click="runSequence" class="control-btn run-sequence" :disabled="isRunning || props.playbackData.length === 0">
+          <span class="icon">{{ isRunning ? '⏳' : '▶️' }}</span>
+          {{ isRunning ? 'Running...' : 'Run Sequence' }}
+        </button>
         <button @click="downloadPlayback" class="control-btn download">
           <span class="icon">⬇️</span>
           Download
@@ -41,13 +45,11 @@ interface Ball {
 
 interface Props {
   playbackData: PlayerState[]
-  isPlaying: boolean
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
-  (e: 'play'): void
-  (e: 'stop'): void
+  (e: 'sequenceComplete'): void
 }>()
 
 const pitchCanvas = ref<HTMLCanvasElement | null>(null)
@@ -63,6 +65,7 @@ const ball = ref<Ball>({
 })
 const playbackInterval = ref<number | null>(null)
 const currentPlaybackIndex = ref(0)
+const isRunning = ref(false)
 
 const calculateFullscreenDimensions = () => {
   const windowWidth = window.innerWidth
@@ -351,9 +354,11 @@ const drawPitch = () => {
   ctx.stroke()
 }
 
-const startPlayback = () => {
-  if (props.playbackData.length === 0) return
+const runSequence = () => {
+  if (props.playbackData.length === 0 || isRunning.value) return
 
+  isRunning.value = true
+  
   // Reset players array and ball
   players.value = []
   
@@ -392,8 +397,8 @@ const startPlayback = () => {
   currentPlaybackIndex.value = 0
   playbackInterval.value = window.setInterval(() => {
     if (currentPlaybackIndex.value >= props.playbackData.length) {
-      stopPlayback()
-      emit('stop')
+      stopSequence()
+      emit('sequenceComplete')
       return
     }
 
@@ -426,11 +431,12 @@ const startPlayback = () => {
   }, 100) // Play back at the same rate as recording
 }
 
-const stopPlayback = () => {
+const stopSequence = () => {
   if (playbackInterval.value) {
     clearInterval(playbackInterval.value)
     playbackInterval.value = null
   }
+  isRunning.value = false
   currentPlaybackIndex.value = 0
 }
 
@@ -468,15 +474,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
-  stopPlayback()
-})
-
-watch(() => props.isPlaying, (newValue) => {
-  if (newValue) {
-    startPlayback()
-  } else {
-    stopPlayback()
-  }
+  stopSequence()
 })
 
 watch(players, () => {
@@ -590,6 +588,24 @@ watch(players, () => {
   background-color: white;
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
+}
+
+.control-btn.run-sequence {
+  background: linear-gradient(135deg, #2196F3, #1976D2);
+  color: white;
+}
+
+.control-btn.run-sequence:disabled {
+  background: linear-gradient(135deg, #B0BEC5, #90A4AE);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.control-btn.run-sequence:disabled:hover {
+  transform: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .control-btn.download {
