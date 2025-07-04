@@ -1,150 +1,5 @@
 <template>
   <div class="rugby-pitch-container" :class="{ 'minimized': isMinimized, 'fullscreen': isFullscreen }">
-    <!-- Phase Management Tabs -->
-    <div class="phase-tabs" v-if="isPhaseActive">
-      <div class="phase-instructions">
-        <span class="instructions-text" v-if="!isSequenceMode">Triple-click any player to set path & speed</span>
-        <span class="instructions-text" v-else-if="sequencePlayersOrder.length === 0">Click 'Start Sequence' to begin player sequencing</span>
-        <span class="instructions-text" v-else-if="currentSequencePlayerIndex < sequencePlayersOrder.length">
-          Sequencing Player {{ sequencePlayersOrder[currentSequencePlayerIndex]?.id }} ({{ currentSequencePlayerIndex + 1 }}/{{ sequencePlayersOrder.length }}) - Triple-click to set path & speed, then click 'Next Player'
-        </span>
-        <span class="instructions-text" v-else>All players sequenced! Click 'Run Sequence' to test timing</span>
-      </div>
-      <div class="sequence-controls" v-if="isSequenceLinesActive">
-        <button 
-          v-if="sequencePlayersOrder.length === 0"
-          @click="startSequence" 
-          class="sequence-btn start-sequence"
-        >
-          Start Sequence
-        </button>
-        <button 
-          v-else-if="currentSequencePlayerIndex < sequencePlayersOrder.length"
-          @click="nextSequencePlayer"
-          class="sequence-btn next-player"
-          :disabled="!hasCurrentPlayerPath"
-        >
-          Next Player ({{ currentSequencePlayerIndex + 1 }}/{{ sequencePlayersOrder.length }})
-        </button>
-        <button 
-          v-else
-          @click="runSequence"
-          class="sequence-btn run-sequence"
-          :disabled="isSequenceRunning"
-        >
-          {{ isSequenceRunning ? 'Running...' : 'Run Sequence' }}
-        </button>
-        <button 
-          @click="resetSequence"
-          class="sequence-btn reset-sequence"
-        >
-          Reset Sequence
-        </button>
-      </div>
-      <button 
-        v-for="phase in phases" 
-        :key="phase.id"
-        @click="selectPhase(phase.id)" 
-        :class="{ active: currentPhase === phase.id }"
-        class="phase-tab"
-      >
-        Phase {{ phase.id }}
-      </button>
-      <button @click="addPhase" class="phase-tab add-phase">+ Add Phase</button>
-    </div>
-
-    <!-- Sequence Management Tabs -->
-    <div class="sequence-tabs" v-if="isPhaseActive && isSequenceMode">
-      <div class="sequence-instructions">
-        <span class="instructions-text">
-          {{ availableSequences.length > 0 ? 
-            (playersWithPaths.length > 0 ? 
-              'Click any player to include/exclude them from the sequence' : 
-              'Triple-click players to draw paths first, then click to include in sequence') : 
-            'Create a sequence to start building coordinated player movements' }}
-        </span>
-      </div>
-      <button 
-        v-for="sequence in availableSequences" 
-        :key="sequence.id"
-        @click="selectSequence(sequence.id)" 
-        :class="{ active: currentSequence === sequence.id }"
-        class="sequence-tab"
-      >
-        Sequence {{ sequence.id }}
-      </button>
-      <button @click="addSequence" class="sequence-tab add-sequence">+ Add Sequence</button>
-    </div>
-
-    <!-- Player Sequence Controls -->
-    <div class="player-controls" v-if="isPhaseActive && isSequenceMode && availableSequences.length > 0">
-      <div class="player-list">
-        <div 
-          v-for="player in players" 
-          :key="`${player.type}-${player.id}`"
-          @click="togglePlayerLoop(player)"
-          class="player-control-btn" 
-          :class="{ 
-            'active': player.isLooping, 
-            'no-path': !canActivatePlayer(player),
-            [player.type]: true 
-          }"
-          :disabled="!canActivatePlayer(player)"
-        >
-          <span class="player-icon">{{ player.type === 'attacking' ? 'A' : 'D' }}{{ player.id }}</span>
-          <span class="player-status">
-            {{ player.isLooping ? 'INCLUDED' : canActivatePlayer(player) ? 'READY' : 'NEEDS PATH' }}
-            <span v-if="canActivatePlayer(player) && player.sequenceDelay !== undefined" class="player-delay">
-              {{ player.sequenceDelay }}ms delay
-            </span>
-          </span>
-        </div>
-      </div>
-      
-      <div class="sequence-controls-new">
-        <button 
-          @click="runCurrentSequence" 
-          class="control-btn sequence-run"
-          :disabled="!currentSequenceData || currentSequenceData.activePlayerIds.length === 0"
-        >
-          <span class="icon">▶</span>
-          Run Sequence
-        </button>
-        
-        <button 
-          @click="runAllSequences" 
-          class="control-btn sequence-run-all"
-          :disabled="availableSequences.length === 0"
-        >
-          <span class="icon">▶▶</span>
-          Run All Sequences
-        </button>
-        
-        <button 
-          @click="resetCurrentSequence" 
-          class="control-btn sequence-reset"
-        >
-          <span class="icon">⏹</span>
-          Reset Sequence
-        </button>
-      </div>
-    </div>
-
-    <!-- Pass Key Instructions -->
-    <div class="pass-instructions" v-if="players.length > 0 && !isPhaseActive">
-      <div class="pass-title">Pass to Player:</div>
-      <div class="pass-keys">
-        <span 
-          v-for="player in players.filter(p => p.assignedNumber !== undefined)" 
-          :key="`${player.type}-${player.id}`"
-          class="pass-key"
-          :class="player.type"
-        >
-          {{ player.assignedNumber }}: {{ player.type === 'attacking' ? 'A' : 'D' }}{{ player.id }}
-        </span>
-      </div>
-    </div>
-
     <div class="canvas-controls">
       <button @click="showPlayerCount('attacking')" class="control-btn attacking">
         <span class="icon">+</span>
@@ -161,13 +16,7 @@
         {{ props.isRecording ? 'Stop Recording' : 'Record Play' }}
       </button>
 
-      <button @click="togglePhaseMode" class="control-btn phase-mode" :class="{ 'active': isPhaseActive }" title="Triple-click players to set paths and speeds">
-        <span class="icon">⟿</span>
-        {{ isPhaseActive ? 'Exit Phase Mode' : 'Phase Mode' }}
-      </button>
-
       <button 
-        v-if="isPhaseActive"
         @click="toggleSequenceMode" 
         class="control-btn sequence-mode" 
         :class="{ 'active': isSequenceMode }" 
@@ -178,6 +27,7 @@
       </button>
 
       <button 
+        v-if="isSequenceMode"
         @click="runCurrentPhaseSequences" 
         class="control-btn run-phase" 
         :disabled="!hasAnySequencesInCurrentPhase || isRunningCurrentPhase"
@@ -188,7 +38,7 @@
       </button>
 
       <button 
-        v-if="isPhaseActive && phases.length > 1"
+        v-if="isSequenceMode && phases.length > 1"
         @click="runFullPlay" 
         class="control-btn run-full-play" 
         :disabled="isRunningCurrentPhase || isRunningFullPlay"
@@ -198,7 +48,7 @@
         {{ isRunningFullPlay ? 'Running Full Play...' : 'Run Full Play' }}
       </button>
 
-      <button @click="clearAllPaths" class="control-btn clear-paths" :disabled="!hasAnyPaths">
+      <button v-if="isSequenceMode" @click="clearAllPaths" class="control-btn clear-paths" :disabled="!hasAnyPaths">
         <span class="icon">🗑</span>
         Clear Paths
       </button>
@@ -207,6 +57,161 @@
         <span class="icon">{{ isFullscreen ? '⤢' : '⤡' }}</span>
         {{ isFullscreen ? 'Exit Fullscreen' : 'Fullscreen' }}
       </button>
+    </div>
+
+    <!-- Sequence Management Container -->
+    <div v-if="isSequenceMode" class="sequence-management-container">
+      <!-- Phase Management Tabs -->
+      <div class="phase-tabs">
+        <div class="phase-instructions">
+          <span class="instructions-text" v-if="!isSequenceMode">Triple-click any player to set path & speed</span>
+          <span class="instructions-text" v-else-if="sequencePlayersOrder.length === 0">Click 'Start Sequence' to begin player sequencing</span>
+          <span class="instructions-text" v-else-if="currentSequencePlayerIndex < sequencePlayersOrder.length">
+            Sequencing Player {{ sequencePlayersOrder[currentSequencePlayerIndex]?.id }} ({{ currentSequencePlayerIndex + 1 }}/{{ sequencePlayersOrder.length }}) - Triple-click to set path & speed, then click 'Next Player'
+          </span>
+          <span class="instructions-text" v-else>All players sequenced! Click 'Run Sequence' to test timing</span>
+        </div>
+        <div class="sequence-controls" v-if="isSequenceLinesActive">
+          <button 
+            v-if="sequencePlayersOrder.length === 0"
+            @click="startSequence" 
+            class="sequence-btn start-sequence"
+          >
+            Start Sequence
+          </button>
+          <button 
+            v-else-if="currentSequencePlayerIndex < sequencePlayersOrder.length"
+            @click="nextSequencePlayer"
+            class="sequence-btn next-player"
+            :disabled="!hasCurrentPlayerPath"
+          >
+            Next Player ({{ currentSequencePlayerIndex + 1 }}/{{ sequencePlayersOrder.length }})
+          </button>
+          <button 
+            v-else
+            @click="runSequence"
+            class="sequence-btn run-sequence"
+            :disabled="isSequenceRunning"
+          >
+            {{ isSequenceRunning ? 'Running...' : 'Run Sequence' }}
+          </button>
+          <button 
+            @click="resetSequence"
+            class="sequence-btn reset-sequence"
+          >
+            Reset Sequence
+          </button>
+        </div>
+        <button 
+          v-for="phase in phases" 
+          :key="phase.id"
+          @click="selectPhase(phase.id)" 
+          :class="{ active: currentPhase === phase.id }"
+          class="phase-tab"
+        >
+          Phase {{ phase.id }}
+        </button>
+        <button @click="addPhase" class="phase-tab add-phase">+ Add Phase</button>
+        <button
+          v-if="phases.length > 1"
+          @click="removePhase"
+          class="phase-tab remove-phase"
+          title="Remove Current Phase"
+        >
+          - Remove Phase
+        </button>
+      </div>
+
+      <!-- Sequence Management Tabs -->
+      <div class="sequence-tabs">
+        <div class="sequence-instructions">
+          <span class="instructions-text">
+            {{ availableSequences.length > 0 ? 
+              (playersWithPaths.length > 0 ? 
+                'Click any player to include/exclude them from the sequence' : 
+                'Triple-click players to draw paths first, then click to include in sequence') : 
+              'Create a sequence to start building coordinated player movements' }}
+          </span>
+        </div>
+        <button 
+          v-for="sequence in availableSequences" 
+          :key="sequence.id"
+          @click="selectSequence(sequence.id)" 
+          :class="{ active: currentSequence === sequence.id }"
+          class="sequence-tab"
+        >
+          Sequence {{ sequence.id }}
+        </button>
+        <button @click="addSequence" class="sequence-tab add-sequence">+ Add Sequence</button>
+        <button
+          v-if="availableSequences.length > 0"
+          @click="removeSequence"
+          class="sequence-tab remove-sequence"
+          title="Remove Current Sequence"
+        >
+          - Remove Sequence
+        </button>
+      </div>
+
+      <!-- Player Sequence Controls -->
+      <div class="player-controls" v-if="availableSequences.length > 0">
+        <div class="player-list">
+          <div 
+            v-for="player in players" 
+            :key="`${player.type}-${player.id}`"
+            @click="togglePlayerLoop(player)"
+            class="player-control-btn" 
+            :class="{ 
+              'active': player.isLooping, 
+              'no-path': !canActivatePlayer(player),
+              [player.type]: true 
+            }"
+            :disabled="!canActivatePlayer(player)"
+          >
+            <span class="player-icon">{{ player.type === 'attacking' ? 'A' : 'D' }}{{ player.id }}</span>
+            <span class="player-status">
+              {{ player.isLooping ? 'INCLUDED' : canActivatePlayer(player) ? 'READY' : 'NEEDS PATH' }}
+              <span v-if="canActivatePlayer(player) && player.sequenceDelay !== undefined" class="player-delay">
+                {{ player.sequenceDelay }}ms delay
+              </span>
+            </span>
+          </div>
+        </div>
+        
+        <div class="sequence-controls-new">
+          <button 
+            @click="runCurrentSequence" 
+            class="control-btn sequence-run"
+            :disabled="!currentSequenceData || currentSequenceData.activePlayerIds.length === 0"
+          >
+            <span class="icon">▶</span>
+            Run Sequence
+          </button>
+          
+          <button 
+            @click="resetCurrentSequence" 
+            class="control-btn sequence-reset"
+          >
+            <span class="icon">⏹</span>
+            Reset Sequence
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pass Key Instructions -->
+    <div class="pass-instructions" v-if="players.length > 0 && !isSequenceMode">
+      <div class="pass-title">Pass to Player:</div>
+      <div class="pass-keys">
+        <span 
+          v-for="player in players.filter(p => p.assignedNumber !== undefined)" 
+          :key="`${player.type}-${player.id}`"
+          class="pass-key"
+          :class="player.type"
+        >
+          {{ player.assignedNumber }}: {{ player.type === 'attacking' ? 'A' : 'D' }}{{ player.id }}
+        </span>
+      </div>
     </div>
 
     <!-- Dialog Backdrop -->
@@ -433,7 +438,6 @@ const selectedAttackingCount = ref(1)
 const selectedDefensiveCount = ref(1)
 
 // Phase planning state
-const isPhaseActive = ref(false)
 const showContextMenu = ref(false)
 const contextMenuPlayer = ref<Player | null>(null)
 const contextMenuPosition = ref({ x: 0, y: 0 })
@@ -638,15 +642,8 @@ const closeDialog = () => {
 }
 
 // Phase planning methods
-const togglePhaseMode = () => {
-  isPhaseActive.value = !isPhaseActive.value
-  if (!isPhaseActive.value) {
-    closeContextMenu()
-  }
-}
-
 const handleTripleClick = (player: Player, event: MouseEvent) => {
-  if (!isPhaseActive.value) return
+  if (!isSequenceMode.value) return
   
   // In sequence lines mode, only allow configuring the current player
   if (isSequenceLinesActive.value && sequencePlayersOrder.value.length > 0) {
@@ -749,6 +746,12 @@ const clearAllPlayerPaths = () => {
     // Clear all path-related visual data
     player.path = []
     player.currentPathIndex = 0
+    player.isAnimating = false
+    player.isLooping = false
+    player.isSelected = false
+    player.pathVisible = true // Reset to default
+    player.isCarryingBall = false
+    player.loopStartTime = undefined
     // Keep position but remove path visualization
   })
   
@@ -756,22 +759,31 @@ const clearAllPlayerPaths = () => {
   activeLoopingPlayers.value.clear()
   playAnimations.value.clear()
   
+  // Clear drawing state
+  isDrawingPath.value = false
+  currentPath.value = []
+  
   // Force immediate redraw to update display
   drawPitch()
 }
 
 // NEW: Inherit positions from previous sequence
 const inheritPositionsFromSequence = (previousSequence: Sequence) => {
-  if (!previousSequence.finalPlayerPositions) return
-  
-  players.value.forEach(player => {
-    const playerId = `${player.type}-${player.id}`
-    const finalPos = previousSequence.finalPlayerPositions![playerId]
-    if (finalPos) {
-      player.x = finalPos.x
-      player.y = finalPos.y
-    }
-  })
+  if (previousSequence.finalPlayerPositions) {
+    players.value.forEach(player => {
+      const playerId = `${player.type}-${player.id}`
+      const finalPos = previousSequence.finalPlayerPositions![playerId]
+      if (finalPos) {
+        player.x = finalPos.x
+        player.y = finalPos.y
+      }
+    })
+  }
+
+  // Inherit ball state
+  if (previousSequence.ballState) {
+    ball.value = JSON.parse(JSON.stringify(previousSequence.ballState));
+  }
 }
 
 // NEW: Load sequence starting positions
@@ -803,6 +815,7 @@ const toggleSequenceMode = () => {
   } else {
     // Stop all loops when exiting sequence mode
     stopAllPlayerLoops()
+    closeContextMenu()
   }
 }
 
@@ -918,7 +931,7 @@ const addPhase = () => {
   // Save current phase state
   saveCurrentPhaseState()
   
-  const newPhaseId = phases.value.length + 1
+  const newPhaseId = phases.value.length > 0 ? Math.max(...phases.value.map(p => p.id)) + 1 : 1
   phases.value.push({
     id: newPhaseId,
     name: `Phase ${newPhaseId}`,
@@ -930,6 +943,26 @@ const addPhase = () => {
   // Switch to new phase
   currentPhase.value = newPhaseId
   loadPhaseState(newPhaseId)
+}
+
+const removePhase = () => {
+  if (phases.value.length <= 1) return;
+  
+  const currentPhaseData = phases.value.find(p => p.id === currentPhase.value);
+  if (!currentPhaseData) return;
+
+  if (window.confirm(`Are you sure you want to remove ${currentPhaseData.name}?`)) {
+    const indexToRemove = phases.value.findIndex(p => p.id === currentPhase.value);
+    
+    if (indexToRemove !== -1) {
+      phases.value.splice(indexToRemove, 1);
+      
+      const newIndex = Math.max(0, indexToRemove - 1);
+      if (phases.value.length > 0) {
+        selectPhase(phases.value[newIndex].id);
+      }
+    }
+  }
 }
 
 const saveCurrentPhaseState = () => {
@@ -947,6 +980,7 @@ const saveCurrentPhaseState = () => {
       }
     }
   }
+  drawPitch()
 }
 
 const loadPhaseState = (phaseId: number) => {
@@ -1021,43 +1055,57 @@ const loadPhaseState = (phaseId: number) => {
 
 // Sequence Management functions
 const selectSequence = (sequenceId: number) => {
-  // Save current sequence data before switching
+  // Persist any edits on current sequence first
   throttledSaveCurrentSequence()
-  
-  // NEW: Clear all current paths before switching
+
+  // Stop animations before switching
+  stopAllPlayerLoops()
+
+  // Switch to the requested sequence id
+  currentSequence.value = sequenceId
+
+  const seq = currentSequenceData.value
+  if (!seq) return
+
+  // Clear previous visual artefacts and load the correct starting snapshot
   clearAllPlayerPaths()
   
-  // Switch to new sequence
-  currentSequence.value = sequenceId
-  stopAllPlayerLoops()
+  // Additional cleanup to ensure complete state reset
+  players.value.forEach(player => {
+    player.isLooping = false
+    player.isAnimating = false
+    player.isSelected = false
+    player.loopStartTime = undefined
+    player.currentPathIndex = 0
+    // Reset to default drag mode
+    player.mode = 'drag'
+  })
   
-  // NEW: Load positions from previous sequence or use inherited positions
-  loadSequenceStartingPositions(sequenceId)
+  // Clear any global drawing state
+  isDrawingPath.value = false
+  currentPath.value = []
+  selectedPlayer.value = null
   
-  // Load complete sequence data for the new sequence
-  const newSequenceData = currentSequenceData.value
-  if (newSequenceData) {
-    if (newSequenceData.playerData && Object.keys(newSequenceData.playerData).length > 0) {
-      loadPlayerDataFromSequence(newSequenceData)
-    } else {
-      // Initialize sequence with current player states
-      players.value.forEach(player => {
-        player.isLooping = newSequenceData.activePlayerIds.includes(player.id)
-      })
-    }
-  }
-  
+  // Now apply the new sequence data
+  applyStartingPositions(seq)
+  loadPlayerDataFromSequence(seq)
+
+  // Ensure player looping flags reflect the new sequence
+  players.value.forEach(p => {
+    p.isLooping = seq.activePlayerIds.includes(p.id)
+  })
+
   drawPitch()
 }
 
 const addSequence = () => {
   const phase = currentPhaseData.value
   if (!phase) return
-  
+
   // Save current sequence before creating new one
   throttledSaveCurrentSequence()
-  
-  const newSequenceId = phase.sequences.length + 1
+
+  const newSequenceId = phase.sequences.length > 0 ? Math.max(...phase.sequences.map(s => s.id)) + 1 : 1
   const newSequence: Sequence = {
     id: newSequenceId,
     name: `Sequence ${newSequenceId}`,
@@ -1065,32 +1113,50 @@ const addSequence = () => {
     ballEvents: [],
     isActive: false,
     playerData: {},
-    ballState: { x: ball.value.x, y: ball.value.y, attachedTo: null },
-    // NEW: Initialize position tracking
+    ballState: JSON.parse(JSON.stringify(ball.value)),
     finalPlayerPositions: {},
     startingPlayerPositions: {}
   }
-  
-  phase.sequences.push(newSequence)
-  currentSequence.value = newSequenceId
-  
-  console.log('Adding new sequence - clearing all paths')
-  
-  // NEW: Clear all paths for sequence independence
-  clearAllPlayerPaths()
-  
-  // Reset player states for new sequence and ensure paths stay cleared
+
+  // Snapshot current player positions as the definitive starting point for this new sequence.
   players.value.forEach(player => {
-    player.isLooping = false
-    player.path = [] // Double-ensure paths are cleared
-    player.currentPathIndex = 0
-    player.mode = 'drag' // Reset to drag mode
-    player.originalPosition = { x: player.x, y: player.y }
+    const playerId = `${player.type}-${player.id}`
+    newSequence.startingPlayerPositions![playerId] = { x: player.x, y: player.y }
   })
-  
-  console.log('Paths after clearing:', players.value.map(p => ({ id: p.id, pathLength: p.path?.length || 0 })))
-  
-  drawPitch()
+
+  phase.sequences.push(newSequence)
+
+  // Now, officially switch to the new sequence. This will correctly
+  // load its state, clearing any old paths and resetting player positions
+  // to the snapshot we just took.
+  selectSequence(newSequenceId)
+}
+
+const removeSequence = () => {
+  const phase = currentPhaseData.value;
+  if (!phase || phase.sequences.length === 0) return;
+
+  const currentSeqData = availableSequences.value.find(s => s.id === currentSequence.value);
+  if (!currentSeqData) return;
+
+  if (window.confirm(`Are you sure you want to remove ${currentSeqData.name}?`)) {
+    const indexToRemove = phase.sequences.findIndex(s => s.id === currentSequence.value);
+    
+    if (indexToRemove !== -1) {
+      phase.sequences.splice(indexToRemove, 1);
+      
+      if (phase.sequences.length > 0) {
+        const newIndex = Math.max(0, indexToRemove - 1);
+        selectSequence(phase.sequences[newIndex].id);
+      } else {
+        // No sequences left, reset state
+        currentSequence.value = 1; // Default
+        stopAllPlayerLoops();
+        clearAllPlayerPaths();
+        drawPitch();
+      }
+    }
+  }
 }
 
 const togglePlayerLoop = (player: Player) => {
@@ -1226,14 +1292,14 @@ const loadPlayerDataFromSequence = (sequence: Sequence) => {
     const savedData = sequence.playerData[playerId]
     
     if (savedData) {
-      // Restore complete player state
+      // Restore the sequence-specific animation data.
+      // The starting position (`originalPosition`) is now handled exclusively
+      // by the calling function (`executeSequenceChain`) to ensure it's
+      // always inherited correctly.
       player.path = savedData.path ? [...savedData.path] : []
-      player.originalPosition = savedData.originalPosition ? { ...savedData.originalPosition } : { x: player.x, y: player.y }
       player.speed = savedData.speed || 100
       player.sequenceDelay = savedData.sequenceDelay || 0
       player.mode = savedData.mode || 'drag'
-      player.x = savedData.position.x
-      player.y = savedData.position.y
       player.isLooping = sequence.activePlayerIds.includes(player.id)
     } else {
       // Player doesn't exist in this sequence - reset to defaults
@@ -1245,11 +1311,6 @@ const loadPlayerDataFromSequence = (sequence: Sequence) => {
       player.isLooping = false
     }
   })
-  
-  // NEW: Also load sequence-specific starting positions
-  if (sequence.startingPlayerPositions) {
-    inheritPositionsFromSequence(sequence)
-  }
   
   // Restore ball state
   if (sequence.ballState) {
@@ -1648,8 +1709,7 @@ const runCurrentSequence = async () => {
   
   // Handle ball state for sequence
   if (activePlayers.length > 0) {
-    // Determine which player should have the ball at the start of this sequence
-    let ballCarrier = activePlayers[0] // Default to first player
+    let ballCarrier = null
     
     // If ball is already attached to someone, keep it with them if they're in this sequence
     if (ball.value.attachedTo) {
@@ -1667,20 +1727,26 @@ const runCurrentSequence = async () => {
       player.isCarryingBall = false
     })
     
-    // Set the ball carrier
-    ballCarrier.isCarryingBall = true
-    
-    ball.value.attachedTo = {
-      type: ballCarrier.type,
-      id: ballCarrier.id
+    // Only set ball carrier if we found one
+    if (ballCarrier) {
+      ballCarrier.isCarryingBall = true
+      
+      ball.value.attachedTo = {
+        type: ballCarrier.type,
+        id: ballCarrier.id
+      }
+      
+      // Position ball with the ball carrier
+      const playerRadius = Math.min(canvasWidth.value, canvasHeight.value) * 0.02
+      ball.value.x = ballCarrier.x + playerRadius * 0.8
+      ball.value.y = ballCarrier.y + playerRadius * 0.4
+      
+      console.log(`Sequence ${sequenceData.id}: Ball carrier is ${ballCarrier.type}-${ballCarrier.id}`)
+    } else {
+      // No ball carrier found - ball stays where it is or goes to center
+      ball.value.attachedTo = null
+      console.log(`Sequence ${sequenceData.id}: No ball carrier assigned`)
     }
-    
-    // Position ball with the ball carrier
-    const playerRadius = Math.min(canvasWidth.value, canvasHeight.value) * 0.02
-    ball.value.x = ballCarrier.x + playerRadius * 0.8
-    ball.value.y = ballCarrier.y + playerRadius * 0.4
-    
-    console.log(`Sequence ${sequenceData.id}: Ball carrier is ${ballCarrier.type}-${ballCarrier.id}`)
   }
   
   drawPitch()
@@ -1722,37 +1788,20 @@ const runCurrentSequence = async () => {
     const playerId = `${player.type}-${player.id}`
     sequenceData.finalPlayerPositions![playerId] = { x: player.x, y: player.y }
   })
+  // ALSO STORE FINAL BALL STATE
+  sequenceData.ballState = JSON.parse(JSON.stringify(ball.value));
 
   console.log(`Sequence ${sequenceData.id} execution complete`)
 }
 
 const runAllSequences = async () => {
-  const sequences = availableSequences.value
-  if (sequences.length === 0) return
+  const sequences = availableSequences.value;
+  if (sequences.length === 0) return;
   
-  for (let i = 0; i < sequences.length; i++) {
-    const sequence = sequences[i]
-    
-    // NEW: Clear paths from previous sequence
-    clearAllPlayerPaths()
-    
-    // NEW: Set starting positions (inherit from previous sequence)
-    if (i > 0) {
-      const previousSequence = sequences[i - 1]
-      if (previousSequence.finalPlayerPositions) {
-        inheritPositionsFromSequence(previousSequence)
-      }
-    }
-    
-    // Switch to sequence and run
-    currentSequence.value = sequence.id
-    await runCurrentSequence()
-    
-    // Brief pause between sequences
-    await new Promise(resolve => setTimeout(resolve, 500))
-  }
+  // Use the centralized execution logic
+  await executeSequences(sequences, ref(false));
   
-  console.log('All sequences execution complete')
+  console.log('All sequences execution complete');
 }
 
 const resetCurrentSequence = () => {
@@ -1842,115 +1891,72 @@ const runCurrentPhase = async () => {
 }
 
 // NEW: Centralized sequence execution logic
-const executeSequenceChain_temp = async (
-  sequencesToRun: Sequence[],
-  runningFlag: import('vue').Ref<boolean>
-) => {
+const executeSequences = async (sequencesToRun: Sequence[], runningFlag: import('vue').Ref<boolean>) => {
   if (runningFlag.value || isPlayRunning.value) return;
 
   const originalPhaseId = currentPhase.value;
   const originalSequenceId = currentSequence.value;
 
   runningFlag.value = true;
-  console.log('Sequence chain execution started.');
-
-  // Start recording if requested
-  if (props.isRecording) {
-    emitCurrentPlayerStates();
-  }
+  isPlayRunning.value = true;
 
   try {
-    const sequencesByPhase: { [phaseId: number]: Sequence[] } = {};
-    phases.value.forEach(phase => {
-      const phaseSequences = sequencesToRun.filter(s => phase.sequences.some(ps => ps.id === s.id));
-      if (phaseSequences.length > 0) {
-        sequencesByPhase[phase.id] = phaseSequences;
-      }
-    });
+    let lastCompletedSequence: Sequence | undefined;
 
-    const phaseIdsToRun = Object.keys(sequencesByPhase).map(Number).sort((a, b) => a - b);
+    for (const sequence of sequencesToRun) {
+      // Ensure UI highlights the correct phase/sequence by matching object identity
+      const parentPhase = phases.value.find(p => p.sequences.includes(sequence));
+      if (parentPhase) currentPhase.value = parentPhase.id;
+      currentSequence.value = sequence.id;
 
-    for (const phaseId of phaseIdsToRun) {
-      if (currentPhase.value !== phaseId) {
-        currentPhase.value = phaseId;
-        loadPhaseState(phaseId);
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
+      stopAllPlayerLoops()
+      clearAllPlayerPaths()
 
-      const phaseSequences = sequencesByPhase[phaseId];
-      for (let i = 0; i < phaseSequences.length; i++) {
-        const sequence = phaseSequences[i];
-
-        clearAllPlayerPaths();
-
-        if (i > 0) {
-          inheritPositionsFromSequence(phaseSequences[i - 1]);
-        } else if (phaseId > phaseIdsToRun[0]) {
-          const prevPhaseId = phaseIdsToRun[phaseIdsToRun.indexOf(phaseId) - 1];
-          const lastSeqOfPrevPhase = sequencesByPhase[prevPhaseId]?.slice(-1)[0];
-          if (lastSeqOfPrevPhase) {
-            inheritPositionsFromSequence(lastSeqOfPrevPhase);
+      // Apply the proper starting snapshot (or inherit from previous sequence if none recorded)
+      if (sequence.startingPlayerPositions && Object.keys(sequence.startingPlayerPositions).length > 0) {
+        applyStartingPositions(sequence)
+      } else if (lastCompletedSequence && lastCompletedSequence.finalPlayerPositions) {
+        // Inherit positions from the prior sequence's finish
+        players.value.forEach(player => {
+          const pid = `${player.type}-${player.id}`
+          const pos = lastCompletedSequence!.finalPlayerPositions![pid]
+          if (pos) {
+            player.x = pos.x
+            player.y = pos.y
           }
-        }
-        
-        currentSequence.value = sequence.id;
-
-        if (sequence.playerData && Object.keys(sequence.playerData).length > 0) {
-          loadPlayerDataFromSequence(sequence);
-        } else {
-          players.value.forEach(player => {
-            player.isLooping = sequence.activePlayerIds.includes(player.id);
-          });
-        }
-
-        await runCurrentSequence();
-
-        if (i < phaseSequences.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
+          player.originalPosition = { x: player.x, y: player.y }
+        })
       }
 
-      players.value.forEach(player => {
-        if (player.originalPosition) {
-          player.originalPosition = { x: player.x, y: player.y };
-        }
-      });
+      // Load per-player data (paths, speed, delays, etc.)
+      loadPlayerDataFromSequence(sequence)
 
-      if (phaseId < phaseIdsToRun[phaseIdsToRun.length - 1]) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+      await runCurrentSequence()
+      lastCompletedSequence = sequence
+      await new Promise(r => setTimeout(r, 500))
     }
   } finally {
+    // Restore previous UI selection
     currentPhase.value = originalPhaseId;
     currentSequence.value = originalSequenceId;
-    loadPhaseState(originalPhaseId);
 
-    runningFlag.value = false;
-    console.log('Sequence chain execution finished.');
-  }
-};
-
-// NEW: Legacy function to run old plays without sequences
-const runAllPhasesLegacy_temp = async () => {
-  isRunningFullPlay.value = true;
-  for (const phase of phases.value) {
-    currentPhase.value = phase.id;
-    loadPhaseState(phase.id);
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    if (players.value.some(p => p.path && p.path.length > 0)) {
-      await runCurrentPhase();
+    const originalPhaseData = phases.value.find(p => p.id === originalPhaseId);
+    if (originalPhaseData) {
+      const originalSeq = originalPhaseData.sequences.find(s => s.id === originalSequenceId)
+      if (originalSeq) {
+        clearAllPlayerPaths()
+        applyStartingPositions(originalSeq)
+        loadPlayerDataFromSequence(originalSeq)
+      }
     }
 
-    players.value.forEach(player => {
-      if (player.originalPosition) {
-        player.originalPosition = { x: player.x, y: player.y };
-      }
-    });
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    drawPitch()
+    runningFlag.value = false;
+    isPlayRunning.value = false;
   }
-  isRunningFullPlay.value = false;
-};
+}
+
+
 
 
 // NEW: Run all sequences in the current phase only
@@ -1966,25 +1972,31 @@ const runCurrentPhaseSequences = async () => {
     return;
   }
   
-  await executeSequenceChain_temp(phase.sequences, isRunningCurrentPhase);
+  await executeSequences(phase.sequences, isRunningCurrentPhase);
 }
 
-// NEW: Run full play (renamed from runAllPhases for clarity)
+// NEW: Run full play (simplified version with proper position inheritance)
 const runFullPlay = async () => {
   if (isRunningFullPlay.value || isPlayRunning.value) return;
   console.log('Starting runFullPlay with phases:', phases.value.map(p => ({ id: p.id, sequences: p.sequences.length })));
 
-  const allSequences = phases.value.flatMap(phase => phase.sequences);
+  // Build flat list of sequences in order
+  const allSequences: Sequence[] = []
+  phases.value.sort((a,b) => a.id - b.id).forEach(phase => {
+    phase.sequences.sort((a,b) => a.id - b.id).forEach(seq => allSequences.push(seq))
+  })
 
   if (allSequences.length === 0) {
-    console.log('No sequences found, attempting to run legacy phase animations.');
-    await runAllPhasesLegacy_temp();
-    return;
+    console.log('No sequences to run.')
+    return
   }
 
-  await executeSequenceChain_temp(allSequences, isRunningFullPlay);
-  console.log('runFullPlay completed')
-  isRunningFullPlay.value = false
+  // rely on executeSequences to toggle running flags
+  try {
+    await executeSequences(allSequences, isRunningFullPlay)
+  } finally {
+    isRunningFullPlay.value = false
+  }
 }
 
 const calculatePathLength = (path: PathPoint[]): number => {
@@ -2377,7 +2389,7 @@ const handleCanvasClick = (event: MouseEvent) => {
   }
 
   // Check if we clicked on an existing path point (for editing)
-  if (isPhaseActive.value) {
+  if (isSequenceMode.value) {
     for (const player of players.value) {
       if (player.path && player.path.length > 0) {
         for (let i = 0; i < player.path.length; i++) {
@@ -2419,7 +2431,7 @@ const handleCanvasClick = (event: MouseEvent) => {
 
   if (clickedPlayer) {
     // Handle triple-click detection for phase mode
-    if (isPhaseActive.value) {
+    if (isSequenceMode.value) {
       if (lastClickedPlayer.value === clickedPlayer) {
         clickCount.value++
       } else {
@@ -2963,126 +2975,129 @@ const drawPitch = () => {
   ctx.stroke()
 
   // Draw player paths
-  if (isPhaseActive.value) {
-    players.value.forEach(player => {
-      if (player.path && player.path.length > 0 && (player.pathVisible !== false)) {
-        // Draw path line
-        ctx.beginPath()
-        ctx.strokeStyle = player.type === 'attacking' ? 
-          'rgba(255, 68, 68, 0.7)' : 'rgba(68, 68, 255, 0.7)'
-        ctx.lineWidth = 3
-        ctx.setLineDash([10, 5])
-        
-        // Start from player's original position or current position
-        const startX = player.originalPosition ? player.originalPosition.x : player.x
-        const startY = player.originalPosition ? player.originalPosition.y : player.y
-        
-        ctx.moveTo(startX, startY)
-        
-        // Draw path
-        player.path.forEach(point => {
-          ctx.lineTo(point.x, point.y)
-        })
-        
-        ctx.stroke()
-        ctx.setLineDash([]) // Reset dash pattern
-        
-        // Draw path points (larger for easier grabbing)
-        player.path.forEach((point, index) => {
+  if (isSequenceMode.value) {
+    // Only draw paths for the current sequence being edited (not during playback)
+    if (!isPlayRunning.value) {
+      players.value.forEach(player => {
+        if (player.path && player.path.length > 0 && (player.pathVisible !== false)) {
+          // Draw path line
           ctx.beginPath()
-          ctx.arc(point.x, point.y, 6, 0, Math.PI * 2)
-          ctx.fillStyle = player.type === 'attacking' ? 
-            'rgba(255, 68, 68, 0.8)' : 'rgba(68, 68, 255, 0.8)'
-          ctx.fill()
-          ctx.strokeStyle = 'white'
-          ctx.lineWidth = 2
-          ctx.stroke()
-          
-          // Add a smaller inner circle for better visibility
-          ctx.beginPath()
-          ctx.arc(point.x, point.y, 3, 0, Math.PI * 2)
-          ctx.fillStyle = 'white'
-          ctx.fill()
-        })
-        
-        // Draw direction arrow at the end
-        if (player.path.length > 1) {
-          const lastPoint = player.path[player.path.length - 1]
-          const secondLastPoint = player.path[player.path.length - 2]
-          
-          const dx = lastPoint.x - secondLastPoint.x
-          const dy = lastPoint.y - secondLastPoint.y
-          const angle = Math.atan2(dy, dx)
-          
-          // Draw arrow
-          const arrowLength = 15
-          const arrowAngle = Math.PI / 6
-          
-          ctx.beginPath()
-          ctx.moveTo(lastPoint.x, lastPoint.y)
-          ctx.lineTo(
-            lastPoint.x - arrowLength * Math.cos(angle - arrowAngle),
-            lastPoint.y - arrowLength * Math.sin(angle - arrowAngle)
-          )
-          ctx.moveTo(lastPoint.x, lastPoint.y)
-          ctx.lineTo(
-            lastPoint.x - arrowLength * Math.cos(angle + arrowAngle),
-            lastPoint.y - arrowLength * Math.sin(angle + arrowAngle)
-          )
           ctx.strokeStyle = player.type === 'attacking' ? 
-            'rgba(255, 68, 68, 1)' : 'rgba(68, 68, 255, 1)'
-          ctx.lineWidth = 2
+            'rgba(255, 68, 68, 0.7)' : 'rgba(68, 68, 255, 0.7)'
+          ctx.lineWidth = 3
+          ctx.setLineDash([10, 5])
+          
+          // Start from player's original position or current position
+          const startX = player.originalPosition ? player.originalPosition.x : player.x
+          const startY = player.originalPosition ? player.originalPosition.y : player.y
+          
+          ctx.moveTo(startX, startY)
+          
+          // Draw path
+          player.path.forEach(point => {
+            ctx.lineTo(point.x, point.y)
+          })
+          
           ctx.stroke()
-        }
-        
-        // Show speed indicator
-        if (player.speed && player.speed !== 100) {
-          ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-          ctx.fillStyle = player.type === 'attacking' ? 
-            'rgba(255, 68, 68, 1)' : 'rgba(68, 68, 255, 1)'
-          ctx.textAlign = 'center'
-          const currentPlayerRadius = player.isAnimating ? basePlayerRadius * 1.15 : basePlayerRadius
-          ctx.fillText(`${player.speed}%`, player.x, player.y - currentPlayerRadius - 10)
-        }
-      }
-    })
-    
-    // Draw current path being drawn
-    if (isDrawingPath.value && currentPath.value.length > 1) {
-      const player = selectedPlayer.value
-      if (player) {
-        ctx.beginPath()
-        ctx.strokeStyle = player.type === 'attacking' ? 
-          'rgba(255, 68, 68, 0.9)' : 'rgba(68, 68, 255, 0.9)'
-        ctx.lineWidth = 4
-        ctx.setLineDash([5, 5])
-        
-        ctx.moveTo(currentPath.value[0].x, currentPath.value[0].y)
-        
-        currentPath.value.slice(1).forEach(point => {
-          ctx.lineTo(point.x, point.y)
-        })
-        
-        ctx.stroke()
-        ctx.setLineDash([]) // Reset dash pattern
-        
-        // Draw current path points
-        currentPath.value.forEach((point, index) => {
-          if (index > 0) { // Skip the starting point
+          ctx.setLineDash([]) // Reset dash pattern
+          
+          // Draw path points (larger for easier grabbing)
+          player.path.forEach((point, index) => {
             ctx.beginPath()
-            ctx.arc(point.x, point.y, 4, 0, Math.PI * 2)
+            ctx.arc(point.x, point.y, 6, 0, Math.PI * 2)
             ctx.fillStyle = player.type === 'attacking' ? 
-              'rgba(255, 68, 68, 1)' : 'rgba(68, 68, 255, 1)'
+              'rgba(255, 68, 68, 0.8)' : 'rgba(68, 68, 255, 0.8)'
             ctx.fill()
             ctx.strokeStyle = 'white'
-            ctx.lineWidth = 1
+            ctx.lineWidth = 2
+            ctx.stroke()
+            
+            // Add a smaller inner circle for better visibility
+            ctx.beginPath()
+            ctx.arc(point.x, point.y, 3, 0, Math.PI * 2)
+            ctx.fillStyle = 'white'
+            ctx.fill()
+          })
+          
+          // Draw direction arrow at the end
+          if (player.path.length > 1) {
+            const lastPoint = player.path[player.path.length - 1]
+            const secondLastPoint = player.path[player.path.length - 2]
+            
+            const dx = lastPoint.x - secondLastPoint.x
+            const dy = lastPoint.y - secondLastPoint.y
+            const angle = Math.atan2(dy, dx)
+            
+            // Draw arrow
+            const arrowLength = 15
+            const arrowAngle = Math.PI / 6
+            
+            ctx.beginPath()
+            ctx.moveTo(lastPoint.x, lastPoint.y)
+            ctx.lineTo(
+              lastPoint.x - arrowLength * Math.cos(angle - arrowAngle),
+              lastPoint.y - arrowLength * Math.sin(angle - arrowAngle)
+            )
+            ctx.moveTo(lastPoint.x, lastPoint.y)
+            ctx.lineTo(
+              lastPoint.x - arrowLength * Math.cos(angle + arrowAngle),
+              lastPoint.y - arrowLength * Math.sin(angle + arrowAngle)
+            )
+            ctx.strokeStyle = player.type === 'attacking' ? 
+              'rgba(255, 68, 68, 1)' : 'rgba(68, 68, 255, 1)'
+            ctx.lineWidth = 2
             ctx.stroke()
           }
-        })
+          
+          // Show speed indicator
+          if (player.speed && player.speed !== 100) {
+            ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+            ctx.fillStyle = player.type === 'attacking' ? 
+              'rgba(255, 68, 68, 1)' : 'rgba(68, 68, 255, 1)'
+            ctx.textAlign = 'center'
+            const currentPlayerRadius = player.isAnimating ? basePlayerRadius * 1.15 : basePlayerRadius
+            ctx.fillText(`${player.speed}%`, player.x, player.y - currentPlayerRadius - 10)
+          }
+        }
+      })
+      
+      // Draw current path being drawn
+      if (isDrawingPath.value && currentPath.value.length > 1) {
+        const player = selectedPlayer.value
+        if (player) {
+          ctx.beginPath()
+          ctx.strokeStyle = player.type === 'attacking' ? 
+            'rgba(255, 68, 68, 0.9)' : 'rgba(68, 68, 255, 0.9)'
+          ctx.lineWidth = 4
+          ctx.setLineDash([5, 5])
+          
+          ctx.moveTo(currentPath.value[0].x, currentPath.value[0].y)
+          
+          currentPath.value.slice(1).forEach(point => {
+            ctx.lineTo(point.x, point.y)
+          })
+          
+          ctx.stroke()
+          ctx.setLineDash([]) // Reset dash pattern
+          
+          // Draw current path points
+          currentPath.value.forEach((point, index) => {
+            if (index > 0) { // Skip the starting point
+              ctx.beginPath()
+              ctx.arc(point.x, point.y, 4, 0, Math.PI * 2)
+              ctx.fillStyle = player.type === 'attacking' ? 
+                'rgba(255, 68, 68, 1)' : 'rgba(68, 68, 255, 1)'
+              ctx.fill()
+              ctx.strokeStyle = 'white'
+              ctx.lineWidth = 1
+              ctx.stroke()
+            }
+          })
+        }
       }
     }
+      }
   }
-}
 
 // Keyboard event handling for pass functionality
 const handleKeyDown = (event: KeyboardEvent) => {
@@ -3350,6 +3365,29 @@ const togglePathVisibility = () => {
   }
 }
 
+// NEW: Apply starting positions stored in a sequence to the live players array
+const applyStartingPositions = (sequence: Sequence) => {
+  if (sequence.startingPlayerPositions && Object.keys(sequence.startingPlayerPositions).length > 0) {
+    players.value.forEach(player => {
+      const pid = `${player.type}-${player.id}`
+      const pos = sequence.startingPlayerPositions![pid]
+      if (pos) {
+        player.x = pos.x
+        player.y = pos.y
+      }
+      player.originalPosition = { x: player.x, y: player.y }
+    })
+  } else {
+    // Even if no snapshot is present ensure originalPosition is set
+    players.value.forEach(player => {
+      if (!player.originalPosition) {
+        player.originalPosition = { x: player.x, y: player.y }
+      }
+    })
+  }
+}
+
+// End of script section
 </script>
 
 <style scoped>
@@ -3418,6 +3456,16 @@ const togglePathVisibility = () => {
 
 .phase-tab.add-phase:hover {
   background: #2196F3;
+  color: white;
+}
+
+.phase-tab.remove-phase {
+  border-color: #F44336;
+  color: #F44336;
+}
+
+.phase-tab.remove-phase:hover {
+  background: #F44336;
   color: white;
 }
 
@@ -4251,6 +4299,16 @@ canvas {
 
 .sequence-tab.add-sequence:hover {
   background: #4CAF50;
+  color: white;
+}
+
+.sequence-tab.remove-sequence {
+  border-color: #F44336;
+  color: #F44336;
+}
+
+.sequence-tab.remove-sequence:hover {
+  background: #F44336;
   color: white;
 }
 
