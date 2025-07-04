@@ -1,24 +1,10 @@
-2025/06/25 10:30:50 Successfully loaded .env file
-2025/06/25 10:30:50 AWS_REGION: us-east-1
-2025/06/25 10:30:50 DYNAMODB_ENDPOINT: http://localhost:8000
-2025/06/25 10:30:50 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 10:30:50 Successfully connected to DynamoDB
-2025/06/25 10:30:50 Server starting on :8080
-2025/06/25 10:31:30 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 10:37:17 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 10:38:43 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 10:48:54 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 10:53:15 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 11:45:42 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 11:46:18 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 11:59:44 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 12:02:20 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 12:05:28 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 12:33:38 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 13:05:27 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 13:07:10 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 13:14:18 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 13:14:22 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 13:15:03 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 13:21:18 Configuring endpoint for service: DynamoDB, region: us-east-1
-2025/06/25 13:26:51 Configuring endpoint for service: DynamoDB, region: us-east-1
+2025/07/04 10:06:57 Successfully loaded .env file
+2025/07/04 10:06:57 AWS_REGION: us-east-1
+2025/07/04 10:06:57 DYNAMODB_ENDPOINT: http://localhost:8000
+2025/07/04 10:06:57 Configuring endpoint for service: DynamoDB, region: us-east-1
+2025/07/04 10:06:57 Successfully connected to DynamoDB
+2025/07/04 10:06:57 Server starting on :8080
+2025/07/04 10:07:34 Configuring endpoint for service: DynamoDB, region: us-east-1
+2025/07/04 10:25:06 Configuring endpoint for service: DynamoDB, region: us-east-1
+2025/07/04 11:08:28 Configuring endpoint for service: DynamoDB, region: us-east-1
+2025/07/04 12:45:37 Server exiting
