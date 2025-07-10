@@ -22,7 +22,7 @@ import type {
   PathPoint,
   CanvasInteractionEvents 
 } from '../types/game'
-import { COLORS, CANVAS_CONFIG } from '../types/game'
+import { COLORS, CANVAS_CONFIG, calculateFieldDimensions } from '../types/game'
 
 interface Props {
   players: Player[]
@@ -138,12 +138,9 @@ const drawBackground = (ctx: CanvasRenderingContext2D, width: number, height: nu
 }
 
 const drawField = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) => {
-  // Calculate grid spacing
-  const squareSize = Math.min(width / 70, height / 100)
-  const actualFieldWidth = squareSize * 70
-  const actualFieldHeight = squareSize * 100
-  const fieldX = x + (width - actualFieldWidth) / 2
-  const fieldY = y + (height - actualFieldHeight) / 2
+  // Use unified field calculation for consistency
+  const fieldDimensions = calculateFieldDimensions(props.canvasConfig.width, props.canvasConfig.height)
+  const { actualFieldWidth, actualFieldHeight, fieldX, fieldY, squareSize } = fieldDimensions
 
   // Draw field border with shadow
   ctx.shadowColor = 'rgba(0, 0, 0, 0.15)'

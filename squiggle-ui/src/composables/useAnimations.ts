@@ -130,6 +130,78 @@ export function useAnimations(
     })
   }
   
+  // Recording-enabled version of animatePlayerPath
+  const animatePlayerPathRecording = (player: Player, totalDuration: number, isRecording: boolean): Promise<void> => {
+    return new Promise((resolve) => {
+      if (!player.path || player.path.length === 0 || !player.originalPosition || !player.speed) {
+        resolve()
+        return
+      }
+      
+      player.isAnimating = true
+      
+      const startTime = Date.now()
+      const pathLength = calculatePathLength(player.path)
+      const actualSpeed = (ANIMATION_CONFIG.BASE_SPEED * player.speed!) / 100
+      const playerDuration = (pathLength / actualSpeed) * 1000
+      
+      const interpolatedPath = createInterpolatedPath(player.path, playerDuration)
+      let currentSegment = 0
+      let lastEmitTime = startTime
+      
+      const animate = () => {
+        const elapsed = Date.now() - startTime
+        
+        if (elapsed >= playerDuration || currentSegment >= interpolatedPath.length - 1) {
+          // Animation complete
+          player.isAnimating = false
+          const lastPoint = interpolatedPath[interpolatedPath.length - 1]
+          player.x = lastPoint.x
+          player.y = lastPoint.y
+          
+          // Emit final state if recording
+          if (isRecording) {
+            emitPlayerStates(true)
+          }
+          
+          resolve()
+          return
+        }
+        
+        // Find current segment
+        while (currentSegment < interpolatedPath.length - 1 && 
+               interpolatedPath[currentSegment + 1].timestamp !== undefined &&
+               elapsed >= interpolatedPath[currentSegment + 1].timestamp!) {
+          currentSegment++
+        }
+        
+        // Interpolate between current and next point
+        if (currentSegment < interpolatedPath.length - 1) {
+          const current = interpolatedPath[currentSegment]
+          const next = interpolatedPath[currentSegment + 1]
+          
+          if (current.timestamp !== undefined && next.timestamp !== undefined) {
+            const segmentProgress = (elapsed - current.timestamp!) / (next.timestamp! - current.timestamp!)
+            const clampedProgress = Math.max(0, Math.min(1, segmentProgress))
+            
+            player.x = current.x + (next.x - current.x) * clampedProgress
+            player.y = current.y + (next.y - current.y) * clampedProgress
+          }
+        }
+        
+        // Emit states during animation for recording (throttled to every 100ms)
+        if (isRecording && Date.now() - lastEmitTime > 100) {
+          emitPlayerStates(true)
+          lastEmitTime = Date.now()
+        }
+        
+        requestAnimationFrame(animate)
+      }
+      
+      animate()
+    })
+  }
+  
   // Enhanced player animation with ball carrying
   const animatePlayerPathWithBall = (player: Player, totalDuration: number): Promise<void> => {
     return new Promise((resolve) => {
@@ -194,6 +266,91 @@ export function useAnimations(
               ball.value.y = player.y + playerRadius * 0.4
             }
           }
+        }
+        
+        requestAnimationFrame(animate)
+      }
+      
+      animate()
+    })
+  }
+  
+  // Recording-enabled version of animatePlayerPathWithBall
+  const animatePlayerPathWithBallRecording = (player: Player, totalDuration: number, isRecording: boolean): Promise<void> => {
+    return new Promise((resolve) => {
+      if (!player.path || player.path.length === 0 || !player.originalPosition || !player.speed) {
+        resolve()
+        return
+      }
+      
+      player.isAnimating = true
+      
+      const startTime = Date.now()
+      const pathLength = calculatePathLength(player.path)
+      const actualSpeed = (ANIMATION_CONFIG.BASE_SPEED * player.speed!) / 100
+      const playerDuration = (pathLength / actualSpeed) * 1000
+      
+      const interpolatedPath = createInterpolatedPath(player.path, playerDuration)
+      let currentSegment = 0
+      let lastEmitTime = startTime
+      const playerRadius = canvasConfig.value.playerRadius
+      
+      const animate = () => {
+        const elapsed = Date.now() - startTime
+        
+        if (elapsed >= playerDuration || currentSegment >= interpolatedPath.length - 1) {
+          // Animation complete
+          player.isAnimating = false
+          const lastPoint = interpolatedPath[interpolatedPath.length - 1]
+          player.x = lastPoint.x
+          player.y = lastPoint.y
+          
+          // Ensure ball follows to final position if player is carrying it
+          if (player.isCarryingBall) {
+            ball.value.x = player.x + playerRadius * 0.8
+            ball.value.y = player.y + playerRadius * 0.4
+          }
+          
+          // Emit final state if recording
+          if (isRecording) {
+            emitPlayerStates(true)
+          }
+          
+          resolve()
+          return
+        }
+        
+        // Find current segment
+        while (currentSegment < interpolatedPath.length - 1 && 
+               interpolatedPath[currentSegment + 1].timestamp !== undefined &&
+               elapsed >= interpolatedPath[currentSegment + 1].timestamp!) {
+          currentSegment++
+        }
+        
+        // Interpolate between current and next point
+        if (currentSegment < interpolatedPath.length - 1) {
+          const current = interpolatedPath[currentSegment]
+          const next = interpolatedPath[currentSegment + 1]
+          
+          if (current.timestamp !== undefined && next.timestamp !== undefined) {
+            const segmentProgress = (elapsed - current.timestamp!) / (next.timestamp! - current.timestamp!)
+            const clampedProgress = Math.max(0, Math.min(1, segmentProgress))
+            
+            player.x = current.x + (next.x - current.x) * clampedProgress
+            player.y = current.y + (next.y - current.y) * clampedProgress
+            
+            // Always move ball with player if they're carrying it
+            if (player.isCarryingBall) {
+              ball.value.x = player.x + playerRadius * 0.8
+              ball.value.y = player.y + playerRadius * 0.4
+            }
+          }
+        }
+        
+        // Emit states during animation for recording (throttled to every 100ms)
+        if (isRecording && Date.now() - lastEmitTime > 100) {
+          emitPlayerStates(true)
+          lastEmitTime = Date.now()
         }
         
         requestAnimationFrame(animate)
@@ -426,7 +583,8 @@ export function useAnimations(
     sequence: Sequence, 
     playersInSequence: Player[], 
     redrawCallback?: () => void,
-    isMultiSequenceExecution: boolean = false
+    isMultiSequenceExecution: boolean = false,
+    isRecording: boolean = false
   ): Promise<void> => {
     // Check if sequence has either active players OR ball events
     const hasActivePlayerMovement = sequence.activePlayerIds.length > 0
@@ -435,8 +593,13 @@ export function useAnimations(
     if (!hasActivePlayerMovement && !hasBallEvents) {
       return // Nothing to execute
     }
-    
+
     animationState.value.isRunning = true
+    
+    // Emit initial state if recording
+    if (isRecording) {
+      emitPlayerStates(true)
+    }
     
     // REFINED: Handle ball state restoration based on execution context
     if (sequence.ballState && sequence.ballState.attachedTo) {
@@ -462,6 +625,11 @@ export function useAnimations(
       )) {
         await animateBallToPlayer(savedBallCarrier)
         setBallCarrier(savedBallCarrier)
+        
+        // Emit state after ball move if recording
+        if (isRecording) {
+          emitPlayerStates(true)
+        }
       }
     }
     
@@ -479,6 +647,12 @@ export function useAnimations(
             : ballEvent.ballPosition
           
           await animateBallPass(fromPos, toPlayer)
+          
+          // Emit state after ball pass if recording
+          if (isRecording) {
+            emitPlayerStates(true)
+          }
+          
           await new Promise(resolve => setTimeout(resolve, 500))
         }
       }
@@ -531,9 +705,9 @@ export function useAnimations(
       
       if (hasBall) {
         player.isCarryingBall = true // Set flag for animation
-        return animatePlayerPathWithBall(player, duration)
+        return animatePlayerPathWithBallRecording(player, duration, isRecording)
       } else {
-        return animatePlayerPath(player, duration)
+        return animatePlayerPathRecording(player, duration, isRecording)
       }
     })
     
@@ -549,8 +723,10 @@ export function useAnimations(
       }
     })
     
-    // Emit state updates
-    emitPlayerStates(false)
+    // Emit final state if recording
+    if (isRecording) {
+      emitPlayerStates(true)
+    }
     
     // Save ball state at end of sequence
     sequence.ballState = JSON.parse(JSON.stringify(ball.value))
@@ -615,7 +791,9 @@ export function useAnimations(
     
     // Animation methods
     animatePlayerPath,
+    animatePlayerPathRecording,
     animatePlayerPathWithBall,
+    animatePlayerPathWithBallRecording,
     animateBallPass,
     animateBallToPlayer,
     startPlayerLoop,

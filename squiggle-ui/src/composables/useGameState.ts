@@ -90,7 +90,9 @@ export function useGameState() {
       speed: 100,
       mode: 'drag',
       sequenceDelay: 0,
-      pathVisible: true
+      pathVisible: true,
+      originalPosition: { x: position.x, y: position.y },
+      playStartPosition: { x: position.x, y: position.y } // Set the immutable start position for the play
     }
     
     players.value.push(newPlayer)

@@ -68,6 +68,8 @@
       :show-defensive-count="extendedUIState.showPlayerDialog && extendedUIState.playerDialogType === 'defensive'"
       :selected-attacking-count="extendedUIState.playerDialogCount"
       :selected-defensive-count="extendedUIState.playerDialogCount"
+      :existing-players="gameState.players.value"
+      :canvas-config="gameState.canvasConfig"
       @close-dialog="handlePlayerDialogCancel"
       @confirm-player-count="handlePlayerDialogConfirm"
     />
@@ -109,24 +111,21 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useGameState } from '../composables/useGameState'
-import { useAnimations } from '../composables/useAnimations'
-import type { 
-  Player, 
-  Ball, 
-  UIState, 
-  PathPoint,
-  PlayerState,
-  RugbyPitchProps 
-} from '../types/game'
+import RugbyCanvas from './RugbyCanvas.vue'
+import ContextMenu from './ContextMenu.vue'
+import PlayerDialog from './PlayerDialog.vue'
 import ControlPanel from './ControlPanel.vue'
 import PhaseManager from './PhaseManager.vue'
 import SequenceManager from './SequenceManager.vue'
 import PlayerManager from './PlayerManager.vue'
 import PassInstructions from './PassInstructions.vue'
-import PlayerDialog from './PlayerDialog.vue'
-import ContextMenu from './ContextMenu.vue'
-import RugbyCanvas from './RugbyCanvas.vue'
+import SavePlayDialog from './SavePlayDialog.vue'
+import { useGameState } from '../composables/useGameState'
+import { useAnimations } from '../composables/useAnimations'
+import type { Player, Ball, PathPoint, Sequence, UIState, RugbyPitchProps } from '../types/game'
+import { calculateFieldDimensions } from '../types/game'
+import type { PlayerState } from '../types/play'
+import { playService } from '../services/playService'
 
 interface Props extends RugbyPitchProps {}
 
@@ -193,6 +192,52 @@ const computedGameState = computed(() => ({
   playersWithPaths: gameState.playersWithPaths.value
 }))
 
+// -------------------------------------------------------------
+// Helper utilities for Full-Play execution
+// -------------------------------------------------------------
+
+/**
+ * Build an immutable baseline map of where every player should stand at the
+ * very start of a "Run Full Play" action.  We favour the coordinates stored in
+ * Phase-1 / Sequence-1 (if they exist) and fall back to a player's own
+ * originalPosition or current XY.
+ */
+const buildBaselinePositions = (): Record<string, { x: number; y: number }> => {
+  const baseline: Record<string, { x: number; y: number }> = {};
+  gameState.players.value.forEach(player => {
+    const id = `${player.type}-${player.id}`;
+    // Prioritize the new immutable playStartPosition, but fall back for older data.
+    const pos = player.playStartPosition || player.originalPosition;
+    if (pos) {
+      baseline[id] = { x: pos.x, y: pos.y };
+    }
+  });
+  return baseline;
+};
+
+/**
+ * Reset all players to the correct starting coordinate for the given sequence.
+ * Active players get their sequence-specific start point; inactive players fall
+ * back to the immutable baseline built once at the beginning of the full play.
+ */
+const resetPlayersForSequence = (
+  sequence: Sequence,
+  baseline: Record<string, { x: number; y: number }>
+) => {
+  gameState.players.value.forEach(player => {
+    const id = `${player.type}-${player.id}`;
+
+    if (sequence.startingPlayerPositions?.[id]) {
+      const pos = sequence.startingPlayerPositions[id];
+      player.x = pos.x;
+      player.y = pos.y;
+    } else if (baseline[id]) { // Always use the baseline for the full play run
+      player.x = baseline[id].x;
+      player.y = baseline[id].y;
+    }
+  });
+};
+
 // Event Handlers - Control Panel
 const handleAddPlayers = (type: 'attacking' | 'defensive') => {
   extendedUIState.showPlayerDialog = true
@@ -201,6 +246,14 @@ const handleAddPlayers = (type: 'attacking' | 'defensive') => {
 }
 
 const handleToggleRecording = () => {
+  // Check if this is a request to start "Record Play" with a full play
+  if (!props.isRecording && gameState.isSequenceMode.value && gameState.availableSequences.value.length > 0) {
+    // This will start recording and execute full play automatically
+    handleRecordFullPlay()
+    return
+  }
+  
+  // Regular manual recording toggle
   const willBeRecording = !props.isRecording
   emit('update:is-recording', willBeRecording)
   
@@ -208,6 +261,120 @@ const handleToggleRecording = () => {
     const states = gameState.getPlayerStates()
     emit('update:playerStates', states)
   }
+}
+
+const handleRecordFullPlay = async () => {
+  // Don't start if already running
+  if (animationState.isRunningFullPlay.value || props.isRecording) {
+    return
+  }
+  
+  // Start recording first
+  emit('update:is-recording', true)
+  
+  // Emit initial state
+  const initialStates = gameState.getPlayerStates()
+  emit('update:playerStates', initialStates)
+  
+  try {
+    // Execute the full play with recording enabled
+    await executeFullPlayWithRecording()
+  } finally {
+    // Stop recording when play is complete
+    emit('update:is-recording', false)
+  }
+}
+
+const executeFullPlayWithRecording = async () => {
+  // Stop any running animations
+  animationState.stopAllPlayerLoops()
+  
+  // Get all sequences from all phases in order - same as handleRunFullPlay
+  const allPhases = gameState.phases.value.sort((a, b) => a.id - b.id)
+  let sequenceCount = 0
+
+  // Build baseline positions once for the entire full-play run
+  const baseline = buildBaselinePositions()
+  
+  for (const phase of allPhases) {
+    if (!phase.sequences || phase.sequences.length === 0) continue
+    
+    // Sort sequences in this phase
+    const sortedSequences = phase.sequences.sort((a, b) => a.id - b.id)
+    
+    for (const sequence of sortedSequences) {
+      sequenceCount++
+      
+      // Reset all players for this sequence using the shared helper
+      resetPlayersForSequence(sequence, baseline)
+
+      // Load sequence data - IDENTICAL to handleRunFullPlay
+      if (sequence.playerData) {
+        Object.entries(sequence.playerData).forEach(([playerId, playerData]) => {
+          const [type, id] = playerId.split('-')
+          const player = gameState.players.value.find(p => 
+            p.type === type && p.id === parseInt(id)
+          )
+          if (player) {
+            player.path = playerData.path ? [...playerData.path] : []
+            player.speed = playerData.speed
+            player.sequenceDelay = playerData.sequenceDelay
+            player.mode = playerData.mode
+          }
+        })
+      }
+      
+      // Force visual update and emit initial position state for this sequence
+      rugbyCanvas.value?.redraw()
+      if (props.isRecording) {
+        const states = gameState.getPlayerStates()
+        emit('update:playerStates', states)
+      }
+      
+      // Execute the sequence with recording enabled - uses exact same timing as regular execution
+      await animationState.executeSequence(
+        sequence, 
+        gameState.players.value, 
+        () => rugbyCanvas.value?.redraw(), // Only redraw, no additional state emission here
+        true, // isMultiSequenceExecution (full play)
+        true  // isRecording flag - handles state emission internally at 100ms intervals
+      )
+
+      // After the sequence completes, promote final positions so the next phase/sequence
+      // starts from the correct spot.
+      gameState.players.value.forEach(p => {
+        p.originalPosition = { x: p.x, y: p.y }
+      })
+      
+      // Emit final position state after sequence completes
+      if (props.isRecording) {
+        const finalStates = gameState.getPlayerStates()
+        emit('update:playerStates', finalStates)
+      }
+      
+      // Pause between sequences for visibility - IDENTICAL timing to handleRunFullPlay
+      await new Promise(resolve => setTimeout(resolve, 800))
+      
+      // Emit state during pause to capture the pause timing in recording
+      if (props.isRecording) {
+        const pauseStates = gameState.getPlayerStates()
+        emit('update:playerStates', pauseStates)
+      }
+    }
+    
+    // Longer pause between phases - IDENTICAL timing to handleRunFullPlay
+    if (phase.id < allPhases[allPhases.length - 1].id) {
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      
+      // Emit state during phase pause
+      if (props.isRecording) {
+        const phasePauseStates = gameState.getPlayerStates()
+        emit('update:playerStates', phasePauseStates)
+      }
+    }
+  }
+  
+  console.log(`Full play recording complete: executed ${sequenceCount} sequences across ${allPhases.length} phases`)
 }
 
 const handleToggleSequenceMode = () => {
@@ -269,6 +436,9 @@ const handleRunFullPlay = async () => {
     // Get all sequences from all phases in order
     const allPhases = gameState.phases.value.sort((a, b) => a.id - b.id)
     let sequenceCount = 0
+
+    // Build baseline positions once for the entire full-play run
+    const baseline = buildBaselinePositions()
     
     for (const phase of allPhases) {
       if (!phase.sequences || phase.sequences.length === 0) continue
@@ -279,31 +449,9 @@ const handleRunFullPlay = async () => {
       for (const sequence of sortedSequences) {
         sequenceCount++
         
-        // MODIFIED: Always reset players to their original positions for this sequence
-        gameState.players.value.forEach(player => {
-          const playerId = `${player.type}-${player.id}`
-          
-          // Priority 1: Use sequence's stored starting positions
-          if (sequence.startingPlayerPositions && sequence.startingPlayerPositions[playerId]) {
-            const startPos = sequence.startingPlayerPositions[playerId]
-            player.x = startPos.x
-            player.y = startPos.y
-            player.originalPosition = { x: startPos.x, y: startPos.y }
-          }
-          // Priority 2: Use player data's original position
-          else if (sequence.playerData && sequence.playerData[playerId] && sequence.playerData[playerId].originalPosition) {
-            const originalPos = sequence.playerData[playerId].originalPosition
-            player.x = originalPos.x
-            player.y = originalPos.y
-            player.originalPosition = { x: originalPos.x, y: originalPos.y }
-          }
-          // Priority 3: Use current originalPosition if it exists
-          else if (player.originalPosition) {
-            player.x = player.originalPosition.x
-            player.y = player.originalPosition.y
-          }
-        })
-        
+        // Reset all players for this sequence using the shared helper
+        resetPlayersForSequence(sequence, baseline)
+
         // Load sequence data
         if (sequence.playerData) {
           Object.entries(sequence.playerData).forEach(([playerId, playerData]) => {
@@ -327,10 +475,12 @@ const handleRunFullPlay = async () => {
           gameState.players.value, 
           () => rugbyCanvas.value?.redraw(),
           true // isMultiSequenceExecution (full play)
-        )
+        );
+
+        // Update original positions for next sequence/phase
         
         // Pause between sequences for visibility
-        await new Promise(resolve => setTimeout(resolve, 800))
+        await new Promise(resolve => setTimeout(resolve, 800));
       }
       
       // Longer pause between phases
@@ -635,24 +785,29 @@ const handlePathDraw = (player: Player, path: PathPoint[]) => {
 }
 
 // Event Handlers - Dialog Management
-const handlePlayerDialogConfirm = (type: 'attacking' | 'defensive', count: number) => {
+const handlePlayerDialogConfirm = (data: { 
+  type: 'attacking' | 'defensive', 
+  count: number,
+  formation: {
+    type: 'default' | 'custom' | 'saved',
+    positions: Array<{ x: number, y: number }>
+  }
+}) => {
+  const { type, count, formation } = data
+  
+  // UNIFIED: Use the same field calculation for proper coordinate conversion
+  const fieldDimensions = calculateFieldDimensions(gameState.canvasConfig.width, gameState.canvasConfig.height)
+  
   for (let i = 0; i < count; i++) {
-    // Calculate position based on existing players
-    const existingPlayers = gameState.players.value.filter(p => p.type === type)
-    const row = Math.floor(existingPlayers.length / 5)
-    const col = existingPlayers.length % 5
+    const relativePosition = formation.positions[i]
     
-    const fieldWidth = gameState.canvasConfig.fieldWidth
-    const baseX = fieldWidth * 0.5
-    const baseY = gameState.canvasConfig.height * (type === 'attacking' ? 0.75 : 0.25)
-    const horizontalSpacing = fieldWidth * 0.08
-    const verticalSpacing = gameState.canvasConfig.height * 0.05
-    
+    // Convert relative position (0-1) to absolute field coordinates using unified method
     const position = {
-      x: baseX + (col - 2) * horizontalSpacing,
-      y: type === 'attacking' ? baseY + row * verticalSpacing : baseY - row * verticalSpacing
+      x: fieldDimensions.toAbsoluteX(relativePosition.x),
+      y: fieldDimensions.toAbsoluteY(relativePosition.y)
     }
     
+    // Add player with formation position as starting position
     gameState.addPlayer(type, position)
   }
   

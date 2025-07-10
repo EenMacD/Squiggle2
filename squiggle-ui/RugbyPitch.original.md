@@ -3,6 +3,217 @@
     <div class="canvas-controls">
       <button @click="showPlayerCount('attacking')" class="control-btn attacking">
         <span class="icon">+</span>
+        Add Red
+      </button>
+
+      <button @click="showPlayerCount('defensive')" class="control-btn defensive">
+        <span class="icon">+</span>
+        Add Blue
+      </button>
+      
+      <button @click="toggleRecording" class="control-btn record" :class="{ 'recording': props.isRecording }">
+        <span class="icon">●</span>
+        {{ props.isRecording ? 'Stop Recording' : 'Record Play' }}
+      </button>
+
+      <button 
+        @click="toggleSequenceMode" 
+        class="control-btn sequence-mode" 
+        :class="{ 'active': isSequenceMode }" 
+        title="Toggle sequence management - click players to include in sequences"
+      >
+        <span class="icon">🎬</span>
+        {{ isSequenceMode ? 'Exit Sequence Mode' : 'Sequence Mode' }}
+      </button>
+
+      <button 
+        v-if="isSequenceMode"
+        @click="runCurrentPhaseSequences" 
+        class="control-btn run-phase" 
+        :disabled="!hasAnySequencesInCurrentPhase || isRunningCurrentPhase"
+        :class="{ 'running': isRunningCurrentPhase, 'recording': props.isRecording && hasAnySequencesInCurrentPhase }"
+      >
+        <span class="icon">▶</span>
+        {{ isRunningCurrentPhase ? 'Running Phase...' : props.isRecording && hasAnySequencesInCurrentPhase ? 'Run & Record Phase' : 'Run Current Phase' }}
+      </button>
+
+      <button 
+        v-if="isSequenceMode && phases.length > 1"
+        @click="runFullPlay" 
+        class="control-btn run-full-play" 
+        :disabled="isRunningCurrentPhase || isRunningFullPlay"
+        :class="{ 'running': isRunningFullPlay }"
+      >
+        <span class="icon">▶▶</span>
+        {{ isRunningFullPlay ? 'Running Full Play...' : 'Run Full Play' }}
+      </button>
+
+      <button v-if="isSequenceMode" @click="clearAllPaths" class="control-btn clear-paths" :disabled="!hasAnyPaths">
+        <span class="icon">🗑</span>
+        Clear Paths
+      </button>
+      
+      <button @click="toggleFullscreen" class="control-btn minimize" :class="{ 'fullscreen-btn': isFullscreen }">
+        <span class="icon">{{ isFullscreen ? '⤢' : '⤡' }}</span>
+        {{ isFullscreen ? 'Exit Fullscreen' : 'Fullscreen' }}
+      </button>
+    </div>
+
+    <!-- Sequence Management Container -->
+    <div v-if="isSequenceMode" class="sequence-management-container">
+      <!-- Phase Management Tabs -->
+      <div class="phase-tabs">
+        <div class="phase-instructions">
+          <span class="instructions-text" v-if="!isSequenceMode">Triple-click any player to set path & speed</span>
+          <span class="instructions-text" v-else-if="sequencePlayersOrder.length === 0">Click 'Start Sequence' to begin player sequencing</span>
+          <span class="instructions-text" v-else-if="currentSequencePlayerIndex < sequencePlayersOrder.length">
+            Sequencing Player {{ sequencePlayersOrder[currentSequencePlayerIndex]?.id }} ({{ currentSequencePlayerIndex + 1 }}/{{ sequencePlayersOrder.length }}) - Triple-click to set path & speed, then click 'Next Player'
+          </span>
+          <span class="instructions-text" v-else>All players sequenced! Click 'Run Sequence' to test timing</span>
+        </div>
+        <div class="sequence-controls" v-if="isSequenceLinesActive">
+          <button 
+            v-if="sequencePlayersOrder.length === 0"
+            @click="startSequence" 
+            class="sequence-btn start-sequence"
+          >
+            Start Sequence
+          </button>
+          <button 
+            v-else-if="currentSequencePlayerIndex < sequencePlayersOrder.length"
+            @click="nextSequencePlayer"
+            class="sequence-btn next-player"
+            :disabled="!hasCurrentPlayerPath"
+          >
+            Next Player ({{ currentSequencePlayerIndex + 1 }}/{{ sequencePlayersOrder.length }})
+          </button>
+          <button 
+            v-else
+            @click="runSequence"
+            class="sequence-btn run-sequence"
+            :disabled="isSequenceRunning"
+          >
+            {{ isSequenceRunning ? 'Running...' : 'Run Sequence' }}
+          </button>
+          <button 
+            @click="resetSequence"
+            class="sequence-btn reset-sequence"
+          >
+            Reset Sequence
+          </button>
+        </div>
+        <button 
+          v-for="phase in phases" 
+          :key="phase.id"
+          @click="selectPhase(phase.id)" 
+          :class="{ active: currentPhase === phase.id }"
+          class="phase-tab"
+        >
+          Phase {{ phase.id }}
+        </button>
+        <button @click="addPhase" class="phase-tab add-phase">+ Add Phase</button>
+        <button
+          v-if="phases.length > 1"
+          @click="removePhase"
+          class="phase-tab remove-phase"
+          title="Remove Current Phase"
+        >
+          - Remove Phase
+        </button>
+      </div>
+
+      <!-- Sequence Management Tabs -->
+      <div class="sequence-tabs">
+        <div class="sequence-instructions">
+          <span class="instructions-text">
+            {{ availableSequences.length > 0 ? 
+              (playersWithPaths.length > 0 ? 
+                'Click any player to include/exclude them from the sequence' : 
+                'Triple-click players to draw paths first, then click to include in sequence') : 
+              'Create a sequence to start building coordinated player movements' }}
+          </span>
+        </div>
+        <button 
+          v-for="sequence in availableSequences" 
+          :key="sequence.id"
+          @click="selectSequence(sequence.id)" 
+          :class="{ active: currentSequence === sequence.id }"
+          class="sequence-tab"
+        >
+          Sequence {{ sequence.id }}
+        </button>
+        <button @click="addSequence" class="sequence-tab add-sequence">+ Add Sequence</button>
+        <button
+          v-if="availableSequences.length > 0"
+          @click="removeSequence"
+          class="sequence-tab remove-sequence"
+          title="Remove Current Sequence"
+        >
+          - Remove Sequence
+        </button>
+      </div>
+
+      <!-- Player Sequence Controls -->
+      <div class="player-controls" v-if="availableSequences.length > 0">
+        <div class="player-list">
+          <div 
+            v-for="player in players" 
+            :key="`${player.type}-${player.id}`"
+            @click="togglePlayerLoop(player)"
+            class="player-control-btn" 
+            :class="{ 
+              'active': player.isLooping, 
+              'no-path': !canActivatePlayer(player),
+              [player.type]: true 
+            }"
+            :disabled="!canActivatePlayer(player)"
+          >
+            <span class="player-icon">{{ player.type === 'attacking' ? 'A' : 'D' }}{{ player.id }}</span>
+            <span class="player-status">
+              {{ player.isLooping ? 'INCLUDED' : canActivatePlayer(player) ? 'READY' : 'NEEDS PATH' }}
+              <span v-if="canActivatePlayer(player) && player.sequenceDelay !== undefined" class="player-delay">
+                {{ player.sequenceDelay }}ms delay
+              </span>
+            </span>
+          </div>
+        </div>
+        
+        <div class="sequence-controls-new">
+          <button 
+            @click="runCurrentSequence" 
+            class="control-btn sequence-run"
+            :disabled="!currentSequenceData || currentSequenceData.activePlayerIds.length === 0"
+          >
+            <span class="icon">▶</span>
+            Run Sequence
+          </button>
+          
+          <button 
+            @click="resetCurrentSequence" 
+            class="control-btn sequence-reset"
+          >
+            <span class="icon">⏹</span>
+            Reset Sequence
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pass Key Instructions -->
+    <div class="pass-instructions" v-if="players.length > 0 && !isSequenceMode">
+      <div class="pass-title">Pass to Player:</div>
+      <div class="pass-keys">
+        <span 
+          v-for="player in players.filter(p => p.assignedNumber !== undefined)" 
+          :key="`${player.type}-${player.id}`"
+          class="pass-key"
+          :class="player.type"
+        >
+<template>
+  <div class="rugby-pitch-container" :class="{ 'minimized': isMinimized, 'fullscreen': isFullscreen }">
+    <div class="canvas-controls">
+      <button @click="showPlayerCount('attacking')" class="control-btn attacking">
+        <span class="icon">+</span>
         Add Attack
       </button>
 

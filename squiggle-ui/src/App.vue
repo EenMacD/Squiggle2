@@ -68,6 +68,13 @@
         />
       </div>
     </main>
+
+    <!-- Save Play Dialog -->
+    <SavePlayDialog
+      :show="showSavePlayDialog"
+      @save="handleSavePlay"
+      @cancel="handleCancelSave"
+    />
   </div>
 </template>
 
@@ -75,6 +82,7 @@
 import { ref, onMounted, watch } from 'vue'
 import RugbyPitch from './components/RugbyPitch.vue'
 import PlaybackViewer from './components/PlaybackViewer.vue'
+import SavePlayDialog from './components/SavePlayDialog.vue'
 import { playService } from './services/playService'
 import type { Play, PlayerState } from './types/play'
 
@@ -89,6 +97,7 @@ const plays = ref<Play[]>([])
 const currentPlayback = ref<Play | null>(null)
 const currentPlayerStates = ref<PlayerState[]>([])
 const players = ref<PlayerState[]>([])
+const showSavePlayDialog = ref(false)
 
 // Load saved plays on component mount
 onMounted(async () => {
@@ -126,30 +135,9 @@ const selectPlayerCount = (type: 'attacking' | 'defensive', count: number) => {
 const handleRecordingChange = async (newValue: boolean) => {
   // If we're switching from recording to not recording
   if (isRecording.value && !newValue) {
-    // Stop recording and save the play
-    try {
-      const playName = prompt('Enter a name for this play:')
-      if (playName && currentPlayerStates.value.length > 0) {
-        // Remove duplicate timestamps to ensure smooth playback
-        const uniqueStates = currentPlayerStates.value.reduce((acc, state) => {
-          const key = `${state.playerId}-${state.timestamp}`
-          if (!acc.has(key)) {
-            acc.set(key, state)
-          }
-          return acc
-        }, new Map<string, PlayerState>())
-        
-        const savedPlay = await playService.createPlay({
-          name: playName,
-          playerStates: Array.from(uniqueStates.values()),
-        })
-        // Refresh plays list
-        plays.value = await playService.listPlays()
-        // Set the current playback to the newly saved play
-        currentPlayback.value = savedPlay
-      }
-    } catch (error) {
-      console.error('Failed to save play:', error)
+    // Stop recording and show save dialog if we have recorded states
+    if (currentPlayerStates.value.length > 0) {
+      showSavePlayDialog.value = true
     }
   } else if (!isRecording.value && newValue) {
     // Start recording - clear previous states
@@ -190,6 +178,45 @@ const deletePlay = async (id: string) => {
 const handleSequenceComplete = () => {
   // Sequence has finished playing
   console.log('Sequence playback complete')
+}
+
+const handleSavePlay = async (playName: string) => {
+  try {
+    // Remove duplicate timestamps to ensure smooth playback
+    const uniqueStates = currentPlayerStates.value.reduce((acc, state) => {
+      const key = `${state.playerId}-${state.timestamp}`
+      if (!acc.has(key)) {
+        acc.set(key, state)
+      }
+      return acc
+    }, new Map<string, PlayerState>())
+    
+    const savedPlay = await playService.createPlay({
+      name: playName,
+      playerStates: Array.from(uniqueStates.values()),
+    })
+    
+    // Refresh plays list
+    plays.value = await playService.listPlays()
+    
+    // Set the current playback to the newly saved play
+    currentPlayback.value = savedPlay
+    
+    // Close the save dialog
+    showSavePlayDialog.value = false
+    
+    console.log('Play saved successfully:', playName)
+  } catch (error) {
+    console.error('Failed to save play:', error)
+    alert('Failed to save play. Please try again.')
+    // Keep dialog open on error
+  }
+}
+
+const handleCancelSave = () => {
+  showSavePlayDialog.value = false
+  // Optionally clear the recorded states if user cancels
+  currentPlayerStates.value = []
 }
 </script>
 
