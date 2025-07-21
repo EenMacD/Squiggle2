@@ -8,7 +8,7 @@
         class="pass-key"
         :class="player.type"
       >
-        {{ player.assignedNumber }}: {{ player.type === 'attacking' ? 'A' : 'D' }}{{ player.id }}
+        {{ player.assignedNumber }}: {{ player.type === 'attacking' ? 'R' : 'B' }}{{ player.id }}
       </span>
     </div>
   </div>

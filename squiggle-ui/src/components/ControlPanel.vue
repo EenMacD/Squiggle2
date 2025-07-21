@@ -2,12 +2,12 @@
   <div class="canvas-controls">
     <button @click="$emit('add-players', 'attacking')" class="control-btn attacking">
       <span class="icon">+</span>
-      Add Attack
+      Add Red
     </button>
 
     <button @click="$emit('add-players', 'defensive')" class="control-btn defensive">
       <span class="icon">+</span>
-      Add Defense
+      Add Blue
     </button>
 
     <!-- Save/Load Controls -->
@@ -23,7 +23,7 @@
     
     <button @click="$emit('toggle-recording')" class="control-btn record" :class="{ 'recording': isRecording }">
       <span class="icon">●</span>
-      {{ isRecording ? 'Stop Recording' : 'Record Play' }}
+      {{ isRecording ? 'Stop Recording' : (isSequenceMode && hasAnySequencesInCurrentPhase ? 'Record & Run Full Play' : 'Record Play') }}
     </button>
 
     <button 

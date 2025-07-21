@@ -7,6 +7,7 @@ export interface PathPoint {
 export interface PlayerState {
   playerId: string
   position: { x: number, y: number }
+  relativePosition?: { x: number, y: number }
   timestamp: number
   ballState?: {
     position: { x: number, y: number }
@@ -38,6 +39,7 @@ export interface Player {
   pathVisible?: boolean // Whether to show the path when drawing
   isCarryingBall?: boolean // Whether this player is carrying the ball
   currentPathIndex?: number // Current index in path for animations
+  playStartPosition?: { x: number; y: number }; // NEW: This is the immutable start position for the entire play
 }
 
 export interface BallPassEvent {
@@ -201,6 +203,23 @@ export interface ContextMenuState {
   player: Player | null
 }
 
+// NEW: Formation system types
+export interface Formation {
+  id: string
+  name: string
+  positions: Array<{ x: number, y: number }> // Relative positions (0-1)
+  playerCount: number
+  type: 'attacking' | 'defensive'
+  createdAt: Date
+}
+
+export interface FormationDialogState {
+  selectedFormationType: 'default' | 'custom' | 'saved'
+  customPositions?: Array<{ x: number, y: number }>
+  selectedSavedFormation?: Formation | null
+  showExistingPlayers: boolean
+}
+
 // Validation and utility types
 export type PlayerType = 'attacking' | 'defensive'
 export type PlayerMode = 'drag' | 'path'
@@ -268,6 +287,75 @@ export const CANVAS_CONFIG = {
     METERS_HEIGHT: 100
   }
 } as const
+
+// UNIFIED: Field calculation utility - ensures consistent field dimensions everywhere
+export const calculateFieldDimensions = (canvasWidth: number, canvasHeight: number) => {
+  // Remove extra width for substitutes to get actual field space
+  const fieldWidth = canvasWidth / 1.4
+  const fieldHeight = canvasHeight
+
+  // Calculate grid spacing to ensure perfect meter squares
+  const squareSize = Math.min(fieldWidth / 70, fieldHeight / 100)
+  
+  // Calculate actual field dimensions based on square size
+  const actualFieldWidth = squareSize * 70  // 70 meters wide
+  const actualFieldHeight = squareSize * 100 // 100 meters long
+  
+  // Center the field in the canvas
+  const fieldX = (canvasWidth - actualFieldWidth) / 2
+  const fieldY = (canvasHeight - actualFieldHeight) / 2
+  
+  return {
+    fieldWidth,
+    fieldHeight,
+    actualFieldWidth,
+    actualFieldHeight,
+    fieldX,
+    fieldY,
+    squareSize,
+    // Coordinate conversion utilities
+    toRelativeX: (absoluteX: number) => (absoluteX - fieldX) / actualFieldWidth,
+    toRelativeY: (absoluteY: number) => (absoluteY - fieldY) / actualFieldHeight,
+    toAbsoluteX: (relativeX: number) => fieldX + (relativeX * actualFieldWidth),
+    toAbsoluteY: (relativeY: number) => fieldY + (relativeY * actualFieldHeight),
+  }
+}
+
+// UNIFIED: Preview field calculation - ensures preview matches main field exactly
+export const calculatePreviewFieldDimensions = (previewWidth: number, previewHeight: number, padding: number = 20) => {
+  const maxWidth = previewWidth - (padding * 2)
+  const maxHeight = previewHeight - (padding * 2)
+  
+  // Use the same ratio and calculation method as main field
+  const fieldRatio = CANVAS_CONFIG.FIELD_RATIO // 70/100
+  
+  let fieldWidth, fieldHeight
+  if (maxWidth / maxHeight > fieldRatio) {
+    // Height is limiting factor
+    fieldHeight = maxHeight
+    fieldWidth = fieldHeight * fieldRatio
+  } else {
+    // Width is limiting factor  
+    fieldWidth = maxWidth
+    fieldHeight = fieldWidth / fieldRatio
+  }
+  
+  // Center the field in the preview canvas
+  const fieldX = padding + (maxWidth - fieldWidth) / 2
+  const fieldY = padding + (maxHeight - fieldHeight) / 2
+  
+  return {
+    fieldWidth,
+    fieldHeight,
+    fieldX,
+    fieldY,
+    // Coordinate conversion utilities for preview
+    toRelativeX: (absoluteX: number) => (absoluteX - fieldX) / fieldWidth,
+    toRelativeY: (absoluteY: number) => (absoluteY - fieldY) / fieldHeight,
+    toAbsoluteX: (relativeX: number) => fieldX + (relativeX * fieldWidth),
+    toAbsoluteY: (relativeY: number) => fieldY + (relativeY * fieldHeight),
+  }
+}
 
 export const ANIMATION_CONFIG = {
   BASE_SPEED: 100, // pixels per second at 100% speed

@@ -13,7 +13,7 @@
         }"
         :disabled="!canActivatePlayer(player)"
       >
-        <span class="player-icon">{{ player.type === 'attacking' ? 'A' : 'D' }}{{ player.id }}</span>
+        <span class="player-icon">{{ player.type === 'attacking' ? 'R' : 'B' }}{{ player.id }}</span>
         <span class="player-status">
           {{ player.isLooping ? 'INCLUDED' : canActivatePlayer(player) ? 'READY' : 'NEEDS PATH' }}
           <span v-if="canActivatePlayer(player) && player.sequenceDelay !== undefined" class="player-delay">

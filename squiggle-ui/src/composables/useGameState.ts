@@ -90,7 +90,9 @@ export function useGameState() {
       speed: 100,
       mode: 'drag',
       sequenceDelay: 0,
-      pathVisible: true
+      pathVisible: true,
+      originalPosition: { x: position.x, y: position.y },
+      playStartPosition: { x: position.x, y: position.y } // Set the immutable start position for the play
     }
     
     players.value.push(newPlayer)
@@ -394,11 +396,19 @@ export function useGameState() {
   // Utility functions
   const getPlayerStates = (): PlayerState[] => {
     const timestamp = Date.now()
+    const { width, fieldWidth, fieldHeight } = canvasConfig
+    const fieldX = (width - fieldWidth) / 2
+    const fieldY = (canvasConfig.height - fieldHeight) / 2
+
     return [
       // Ball state
       {
         playerId: 'ball',
         position: { x: ball.value.x, y: ball.value.y },
+        relativePosition: {
+          x: (ball.value.x - fieldX) / fieldWidth,
+          y: (ball.value.y - fieldY) / fieldHeight,
+        },
         timestamp,
         ballState: {
           position: { x: ball.value.x, y: ball.value.y },
@@ -409,6 +419,10 @@ export function useGameState() {
       ...players.value.map(player => ({
         playerId: `${player.type}-${player.id}`,
         position: { x: player.x, y: player.y },
+        relativePosition: {
+          x: (player.x - fieldX) / fieldWidth,
+          y: (player.y - fieldY) / fieldHeight,
+        },
         timestamp
       }))
     ]

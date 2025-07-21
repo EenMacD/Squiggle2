@@ -402,11 +402,11 @@ const runSequence = () => {
       return
     }
 
-    // Get all states for the current timestamp
+    // Get current timestamp and all states for this timestamp
     const currentTimestamp = props.playbackData[currentPlaybackIndex.value].timestamp
     const currentStates = props.playbackData.filter(state => state.timestamp === currentTimestamp)
     
-    // First update ball state if present
+    // Update ball state first if present
     const ballState = currentStates.find(state => state.playerId === 'ball')
     if (ballState?.ballState) {
       ball.value.x = ballState.ballState.position.x
@@ -414,7 +414,7 @@ const runSequence = () => {
       ball.value.attachedTo = ballState.ballState.attachedTo
     }
     
-    // Then update player states
+    // Then update all player states for this timestamp
     currentStates.forEach(state => {
       if (state.playerId !== 'ball') {
         const [type, id] = state.playerId.split('-')
@@ -426,9 +426,17 @@ const runSequence = () => {
       }
     })
     
+    // Force visual update
     requestAnimationFrame(drawPitch)
-    currentPlaybackIndex.value++
-  }, 100) // Play back at the same rate as recording
+    
+    // Move to next timestamp group (skip all states with current timestamp)
+    do {
+      currentPlaybackIndex.value++
+    } while (
+      currentPlaybackIndex.value < props.playbackData.length && 
+      props.playbackData[currentPlaybackIndex.value].timestamp === currentTimestamp
+    )
+  }, 100) // 100ms intervals to match recording emission rate
 }
 
 const stopSequence = () => {
