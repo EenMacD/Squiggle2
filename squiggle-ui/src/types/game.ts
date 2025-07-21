@@ -7,6 +7,7 @@ export interface PathPoint {
 export interface PlayerState {
   playerId: string
   position: { x: number, y: number }
+  relativePosition?: { x: number, y: number }
   timestamp: number
   ballState?: {
     position: { x: number, y: number }
