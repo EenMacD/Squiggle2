@@ -1,0 +1,75 @@
+name: Deploy Squiggle Web to EC2
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'squiggle-web/**'
+  workflow_dispatch:  # Allows manual triggering via UI
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy to EC2
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Deploy to EC2 via SSH
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ec2-user
+        key: ${{ secrets.EC2_PRIVATE_KEY }}
+        port: 22
+        script: |
+          # Navigate to app directory (create if doesn't exist)
+          mkdir -p /home/ec2-user/squiggle-web
+          cd /home/ec2-user/squiggle-web
+          
+          # Clone or update repository
+          if [ -d "squiggle" ]; then
+            cd squiggle
+            git pull origin main
+          else
+            git clone https://github.com/${{ github.repository }}.git squiggle
+            cd squiggle
+          fi
+          
+          # Build and deploy
+          cd squiggle-web
+          
+          # Stop existing container
+          docker stop squiggle-web || true
+          docker rm squiggle-web || true
+          
+          # Build new image
+          docker build -t squiggle-web:latest .
+          
+          # Run new container
+          docker run -d \
+            -p 80:80 \
+            --name squiggle-web \
+            --restart unless-stopped \
+            squiggle-web:latest
+          
+          # Clean up old images
+          docker image prune -f
+    
+    - name: Verify Deployment
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ec2-user
+        key: ${{ secrets.EC2_PRIVATE_KEY }}
+        script: |
+          sleep 5
+          if docker ps | grep -q squiggle-web; then
+            echo "✅ Deployment successful!"
+            docker ps | grep squiggle-web
+          else
+            echo "❌ Deployment failed!"
+            docker logs squiggle-web --tail 10
+            exit 1
+          fi
